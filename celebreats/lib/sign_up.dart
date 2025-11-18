@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({Key? key}) : super(key: key);
+  const SignUpScreen({super.key});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -109,21 +109,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFFFFDF3),
       body: SafeArea(
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Form(
               key: _formKey,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Spacer(flex: 2),
+                  const SizedBox(height: 40),
 
-                  Image.asset('assets/logo.png', height: 250),
+                  Image.asset('assets/logo.png', height: 180),
                   const SizedBox(height: 10),
 
                   const Align(
@@ -137,7 +135,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
                   // USERNAME
                   TextFormField(
@@ -145,15 +143,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     validator: _validateUsername,
                     decoration: _input("Username"),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 16),
 
                   // EMAIL
                   TextFormField(
                     controller: _emailController,
                     validator: _validateEmail,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: _input("Email"),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 16),
 
                   // PASSWORD
                   TextFormField(
@@ -169,7 +168,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 16),
 
                   // CONFIRM PASSWORD
                   TextFormField(
@@ -185,7 +184,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 2),
 
                   // CHECKBOX
                   Row(
@@ -202,11 +201,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 16),
 
                   // SIGN UP BUTTON
                   SizedBox(
                     width: double.infinity,
+                    height: 55,
                     child: Container(
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
@@ -219,19 +219,104 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
                         ),
                         child: const Text(
                           "Sign up",
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 18,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
 
-                  const Spacer(flex: 2),
+                  // OR DIVIDER
+                  const Row(
+                    children: [
+                      Expanded(child: Divider(thickness: 1)),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                          "OR",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(child: Divider(thickness: 1)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // SOCIAL BUTTONS
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3E3CE),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            side: const BorderSide(color: Colors.black12),
+                          ),
+                          onPressed: () {},
+                          icon: Image.asset('assets/facebook.png', width: 22),
+                          label: const Text(
+                            "Facebook",
+                            style: TextStyle(color: Colors.black87),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3E3CE),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            side: const BorderSide(color: Colors.black12),
+                          ),
+                          onPressed: () {},
+                          icon: Image.asset('assets/google.png', width: 22),
+                          label: const Text(
+                            "Google",
+                            style: TextStyle(color: Colors.black87),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ALREADY HAVE ACCOUNT
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("Already have an account? "),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text(
+                          "Log In",
+                          style: TextStyle(
+                            color: Color(0xFFE65C2A),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
                 ],
               ),
             ),

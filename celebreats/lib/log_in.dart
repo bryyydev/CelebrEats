@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LogInScreen extends StatefulWidget {
-  const LogInScreen({Key? key}) : super(key: key);
+  const LogInScreen({super.key});
 
   @override
   State<LogInScreen> createState() => _LogInScreenState();
@@ -11,11 +11,10 @@ class LogInScreen extends StatefulWidget {
 class _LogInScreenState extends State<LogInScreen> {
   bool _obscurePassword = true;
 
-  // ✅ Added controllers
   final TextEditingController emailCtrl = TextEditingController();
   final TextEditingController passCtrl = TextEditingController();
 
-  // ✅ LOGIN LOGIC
+  // LOGIN LOGIC
   Future<void> loginUser() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -26,7 +25,6 @@ class _LogInScreenState extends State<LogInScreen> {
         passCtrl.text.trim() == savedPass) {
       await prefs.setBool("isLoggedIn", true);
 
-      // Navigate to home screen
       Navigator.pushReplacementNamed(context, '/home');
 
       ScaffoldMessenger.of(
@@ -43,12 +41,17 @@ class _LogInScreenState extends State<LogInScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF3),
-      body: Center(
+      resizeToAvoidBottomInset: true,
+
+      body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const SizedBox(height: 40),
+
+              // LOGO
               Image.asset('assets/logo.png', height: 350),
               const SizedBox(height: 22),
 
@@ -63,11 +66,11 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 10),
 
-              // USERNAME / EMAIL
+              // EMAIL
               TextField(
-                controller: emailCtrl, // <-- added
+                controller: emailCtrl,
                 decoration: InputDecoration(
                   hintText: "Username / Email",
                   hintStyle: const TextStyle(color: Colors.grey),
@@ -83,11 +86,11 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 16),
 
               // PASSWORD
               TextField(
-                controller: passCtrl, // <-- added
+                controller: passCtrl,
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   hintText: "Password",
@@ -132,6 +135,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 5),
 
               // LOGIN BUTTON
@@ -148,7 +152,7 @@ class _LogInScreenState extends State<LogInScreen> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: ElevatedButton(
-                    onPressed: loginUser, // <-- replaced
+                    onPressed: loginUser,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -167,10 +171,12 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
 
-              Row(
-                children: const [
+              const SizedBox(height: 16),
+
+              // DIVIDER
+              const Row(
+                children: [
                   Expanded(child: Divider(thickness: 1)),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 10),
@@ -182,11 +188,11 @@ class _LogInScreenState extends State<LogInScreen> {
                   Expanded(child: Divider(thickness: 1)),
                 ],
               ),
-              const SizedBox(height: 20),
 
-              // SOCIAL BUTTONS...
+              const SizedBox(height: 16),
+
+              // SOCIAL BUTTONS
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
@@ -200,7 +206,10 @@ class _LogInScreenState extends State<LogInScreen> {
                       ),
                       onPressed: () {},
                       icon: Image.asset('assets/facebook.png', width: 22),
-                      label: const Text("Facebook"),
+                      label: const Text(
+                        "Facebook",
+                        style: TextStyle(color: Colors.black87),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -216,13 +225,18 @@ class _LogInScreenState extends State<LogInScreen> {
                       ),
                       onPressed: () {},
                       icon: Image.asset('assets/google.png', width: 22),
-                      label: const Text("Google"),
+                      label: const Text(
+                        "Google",
+                        style: TextStyle(color: Colors.black87),
+                      ),
                     ),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // SIGN UP ROW
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -241,6 +255,8 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ],
               ),
+
+              const SizedBox(height: 40),
             ],
           ),
         ),

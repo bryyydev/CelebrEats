@@ -32,7 +32,7 @@ class GetStartedScreen extends StatelessWidget {
                 "Catering\nService",
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: width * 0.13,
+                  fontSize: width * 0.14,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF7B241C),
                   height: 1.1,
@@ -53,8 +53,8 @@ class GetStartedScreen extends StatelessWidget {
                     },
                     borderRadius: BorderRadius.circular(30),
                     child: Ink(
-                      width: width * 0.5,
-                      height: 48,
+                      width: width * 0.6,
+                      height: 50,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFA4A2A), Color(0xFFFFA726)],
