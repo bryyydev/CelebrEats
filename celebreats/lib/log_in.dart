@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LogInScreen extends StatefulWidget {
   const LogInScreen({Key? key}) : super(key: key);
@@ -10,6 +11,34 @@ class LogInScreen extends StatefulWidget {
 class _LogInScreenState extends State<LogInScreen> {
   bool _obscurePassword = true;
 
+  // ✅ Added controllers
+  final TextEditingController emailCtrl = TextEditingController();
+  final TextEditingController passCtrl = TextEditingController();
+
+  // ✅ LOGIN LOGIC
+  Future<void> loginUser() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final savedEmail = prefs.getString("email");
+    final savedPass = prefs.getString("password");
+
+    if (emailCtrl.text.trim() == savedEmail &&
+        passCtrl.text.trim() == savedPass) {
+      await prefs.setBool("isLoggedIn", true);
+
+      // Navigate to home screen
+      Navigator.pushReplacementNamed(context, '/home');
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Login successful!")));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Invalid email or password")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -20,11 +49,9 @@ class _LogInScreenState extends State<LogInScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // LOGO
               Image.asset('assets/logo.png', height: 350),
               const SizedBox(height: 22),
 
-              // TITLE
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -40,6 +67,7 @@ class _LogInScreenState extends State<LogInScreen> {
 
               // USERNAME / EMAIL
               TextField(
+                controller: emailCtrl, // <-- added
                 decoration: InputDecoration(
                   hintText: "Username / Email",
                   hintStyle: const TextStyle(color: Colors.grey),
@@ -59,6 +87,7 @@ class _LogInScreenState extends State<LogInScreen> {
 
               // PASSWORD
               TextField(
+                controller: passCtrl, // <-- added
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   hintText: "Password",
@@ -88,9 +117,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 2),
 
-              // FORGOT PASSWORD
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -107,7 +134,7 @@ class _LogInScreenState extends State<LogInScreen> {
               ),
               const SizedBox(height: 5),
 
-              // LOGIN BUTTON WITH GRADIENT
+              // LOGIN BUTTON
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -121,12 +148,7 @@ class _LogInScreenState extends State<LogInScreen> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: handle login action
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Logging in...')),
-                      );
-                    },
+                    onPressed: loginUser, // <-- replaced
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -145,10 +167,8 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
 
-              // DIVIDER
               Row(
                 children: const [
                   Expanded(child: Divider(thickness: 1)),
@@ -164,7 +184,7 @@ class _LogInScreenState extends State<LogInScreen> {
               ),
               const SizedBox(height: 20),
 
-              // SOCIAL BUTTONS
+              // SOCIAL BUTTONS...
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -179,15 +199,8 @@ class _LogInScreenState extends State<LogInScreen> {
                         side: const BorderSide(color: Colors.black12),
                       ),
                       onPressed: () {},
-                      icon: Image.asset(
-                        'assets/facebook.png',
-                        width: 22,
-                        height: 22,
-                      ),
-                      label: const Text(
-                        "Facebook",
-                        style: TextStyle(color: Colors.black87, fontSize: 14),
-                      ),
+                      icon: Image.asset('assets/facebook.png', width: 22),
+                      label: const Text("Facebook"),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -202,22 +215,14 @@ class _LogInScreenState extends State<LogInScreen> {
                         side: const BorderSide(color: Colors.black12),
                       ),
                       onPressed: () {},
-                      icon: Image.asset(
-                        'assets/google.png',
-                        width: 22,
-                        height: 22,
-                      ),
-                      label: const Text(
-                        "Google",
-                        style: TextStyle(color: Colors.black87, fontSize: 14),
-                      ),
+                      icon: Image.asset('assets/google.png', width: 22),
+                      label: const Text("Google"),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
 
-              // SIGN UP - UPDATED TO USE NAMED ROUTES
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
