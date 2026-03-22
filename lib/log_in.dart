@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LogInScreen extends StatefulWidget {
   const LogInScreen({super.key});
@@ -15,11 +18,41 @@ class _LogInScreenState extends State<LogInScreen> {
   final TextEditingController emailCtrl = TextEditingController();
   final TextEditingController passCtrl = TextEditingController();
 
-  // -------------------------------
-  // LOGIN LOGIC (COMPLETELY FIXED)
-  // -------------------------------
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  @override
+  void dispose() {
+    emailCtrl.dispose();
+    passCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleAfterLogin() {
+    if (!mounted) return;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final returnToBooking = args is Map && args['returnToBooking'] == true;
+    final fromDialog = args is Map && args['fromDialog'] == true;
+
+    if (returnToBooking) {
+      // ✅ Came from signup during booking → go to booking
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/customize-package',
+        (route) => route.isFirst,
+      );
+    } else if (fromDialog) {
+      // ✅ Came from booking dialog "Log In" button → pop so .then() fires
+      Navigator.pop(context);
+    } else {
+      // ✅ Everything else (logout → login, fresh login, signup → login)
+      // → clear stack and go home safely
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    }
+  }
+
   Future<void> loginUser() async {
-    // Validate inputs first
     if (emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -30,29 +63,44 @@ class _LogInScreenState extends State<LogInScreen> {
       return;
     }
 
-    // Set loading state
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Add small delay to ensure UI updates
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Step 1 — Firebase Auth
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: emailCtrl.text.trim(),
+        password: passCtrl.text.trim(),
+      );
 
-      final prefs = await SharedPreferences.getInstance();
-
-      final savedEmail = prefs.getString("email");
-      final savedPass = prefs.getString("password");
-
-      // No account created yet
-      if (savedEmail == null || savedPass == null) {
+      // Step 2 — Firestore check with timeout so it never hangs
+      DocumentSnapshot? userDoc;
+      try {
+        userDoc = await _firestore
+            .collection('users')
+            .doc(cred.user!.uid)
+            .get()
+            .timeout(
+              const Duration(seconds: 8),
+              onTimeout: () => throw Exception('Connection timed out.'),
+            );
+      } catch (_) {
+        // ✅ Firestore unreachable — Auth already confirmed credentials,
+        // let the user through and sync later
         if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+          setState(() => _isLoading = false);
+          _handleAfterLogin();
+        }
+        return;
+      }
+
+      // Step 3 — Reject if no Firestore record
+      if (!userDoc.exists) {
+        await _auth.signOut();
+        if (mounted) {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("No account found. Please sign up first."),
+              content: Text("Account not found. Please sign up first."),
               backgroundColor: Colors.red,
             ),
           );
@@ -60,59 +108,78 @@ class _LogInScreenState extends State<LogInScreen> {
         return;
       }
 
-      // Wrong account / password
-      if (emailCtrl.text.trim() != savedEmail ||
-          passCtrl.text.trim() != savedPass) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Invalid email or password"),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
-      // Correct credentials - Save login state
-      await prefs.setBool("isLoggedIn", true);
-
-      // Stop loading
+      // Step 4 — All good, navigate
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
+        _handleAfterLogin();
       }
-
-      // Show success message
+    } on FirebaseAuthException catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
+        String message = "Login failed.";
+        if (e.code == 'user-not-found')
+          message = "No account found for this email.";
+        if (e.code == 'wrong-password') message = "Incorrect password.";
+        if (e.code == 'invalid-email') message = "Invalid email address.";
+        if (e.code == 'invalid-credential')
+          message = "Invalid email or password.";
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Login successful!"),
-            backgroundColor: Colors.green,
-            duration: Duration(milliseconds: 500),
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
-      }
-
-      // Wait a bit then navigate
-      await Future.delayed(const Duration(milliseconds: 600));
-
-      // Navigate to home
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final cred = await _auth.signInWithCredential(credential);
+
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(cred.user!.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        await _firestore.collection('users').doc(cred.user!.uid).set({
+          'uid': cred.user!.uid,
+          'name': cred.user!.displayName ?? 'User',
+          'email': cred.user!.email ?? '',
+          'is_caterer': false,
+          'photo': cred.user!.photoURL ?? '',
+          'created_at': FieldValue.serverTimestamp(),
         });
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _handleAfterLogin();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Error: ${e.toString()}"),
+            content: Text("Google sign-in failed: $e"),
             backgroundColor: Colors.red,
           ),
         );
@@ -120,16 +187,39 @@ class _LogInScreenState extends State<LogInScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    emailCtrl.dispose();
-    passCtrl.dispose();
-    super.dispose();
+  Future<void> _handleForgotPassword() async {
+    if (emailCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Enter your email first"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    try {
+      await _auth.sendPasswordResetEmail(email: emailCtrl.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Password reset email sent! Check your inbox."),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        String message = "Could not send reset email.";
+        if (e.code == 'user-not-found')
+          message = "No account found for this email.";
+        if (e.code == 'invalid-email') message = "Invalid email address.";
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
-  // -------------------------------
-  // UI
-  // -------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -142,11 +232,16 @@ class _LogInScreenState extends State<LogInScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-
-              // LOGO
-              Image.asset('assets/logo.png', height: 350),
+              Image.asset(
+                'assets/logo.png',
+                height: 350,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.restaurant,
+                  size: 100,
+                  color: Colors.deepOrange,
+                ),
+              ),
               const SizedBox(height: 22),
-
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -159,8 +254,6 @@ class _LogInScreenState extends State<LogInScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-
-              // EMAIL
               TextField(
                 controller: emailCtrl,
                 enabled: !_isLoading,
@@ -181,8 +274,6 @@ class _LogInScreenState extends State<LogInScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // PASSWORD
               TextField(
                 controller: passCtrl,
                 enabled: !_isLoading,
@@ -207,19 +298,15 @@ class _LogInScreenState extends State<LogInScreen> {
                           : Icons.visibility,
                       color: const Color(0xFFE65C2A),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePassword = !_obscurePassword;
-                      });
-                    },
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
                   ),
                 ),
               ),
-
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: _isLoading ? null : () {},
+                  onPressed: _isLoading ? null : _handleForgotPassword,
                   child: const Text(
                     "Forgot Password?",
                     style: TextStyle(
@@ -230,10 +317,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 5),
-
-              // LOGIN BUTTON
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -277,9 +361,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
               const Row(
                 children: [
                   Expanded(child: Divider(thickness: 1)),
@@ -293,10 +375,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   Expanded(child: Divider(thickness: 1)),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // SOCIAL BUTTONS
               Row(
                 children: [
                   Expanded(
@@ -310,7 +389,12 @@ class _LogInScreenState extends State<LogInScreen> {
                         side: const BorderSide(color: Colors.black12),
                       ),
                       onPressed: _isLoading ? null : () {},
-                      icon: Image.asset('assets/facebook.png', width: 22),
+                      icon: Image.asset(
+                        'assets/facebook.png',
+                        width: 22,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.facebook, color: Colors.blue),
+                      ),
                       label: const Text(
                         "Facebook",
                         style: TextStyle(color: Colors.black87),
@@ -328,8 +412,13 @@ class _LogInScreenState extends State<LogInScreen> {
                         ),
                         side: const BorderSide(color: Colors.black12),
                       ),
-                      onPressed: _isLoading ? null : () {},
-                      icon: Image.asset('assets/google.png', width: 22),
+                      onPressed: _isLoading ? null : signInWithGoogle,
+                      icon: Image.asset(
+                        'assets/google.png',
+                        width: 22,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.g_mobiledata, color: Colors.red),
+                      ),
                       label: const Text(
                         "Google",
                         style: TextStyle(color: Colors.black87),
@@ -338,10 +427,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // SIGN UP ROW
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -349,9 +435,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   GestureDetector(
                     onTap: _isLoading
                         ? null
-                        : () {
-                            Navigator.pushNamed(context, '/signup');
-                          },
+                        : () => Navigator.pushNamed(context, '/signup'),
                     child: Text(
                       "Sign up",
                       style: TextStyle(
@@ -364,7 +448,6 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 40),
             ],
           ),

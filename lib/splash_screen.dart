@@ -19,7 +19,6 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // Total duration of the animation sequence
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -55,9 +54,10 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Navigate to Get Started screen after full animation completes
+    // ✅ Always go to /home after splash — no login check
+    // Login is only required when user tries to book a package
     Timer(const Duration(seconds: 6), () {
-      if (mounted) Navigator.pushReplacementNamed(context, '/getStarted');
+      if (mounted) Navigator.pushReplacementNamed(context, '/home');
     });
   }
 
@@ -69,7 +69,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Use AnimatedBuilder to rebuild background opacity and allow AlignTransition/ScaleTransition to animate
     return Scaffold(
       body: AnimatedBuilder(
         animation: _controller,
@@ -85,10 +84,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Color(0xFFFF5F6D), // reddish top
-                        Color(0xFFFFC371), // orange bottom
-                      ],
+                      colors: [Color(0xFFFF5F6D), Color(0xFFFFC371)],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -96,7 +92,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // Animated logo: keeps horizontally centered while moving down
+              // Animated logo
               AlignTransition(
                 alignment: _alignmentAnimation,
                 child: ScaleTransition(

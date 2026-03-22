@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "765023326225",
+    "project_id": "celebreats-7f607",
+    "storage_bucket": "celebreats-7f607.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:765023326225:android:efdb6ab295742249b4a1b0",
+        "android_client_info": {
+          "package_name": "com.example.celebreats"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm8BzO14dU3cgHs9kjdie8CLljjJDDTbA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
