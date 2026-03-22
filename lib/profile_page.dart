@@ -9,7 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'favorite.dart';
-import 'caterer_registration_page.dart'; // ← NEW: import registration page
+import 'caterer_registration_page.dart';
+import 'caterer_dashboard.dart';
 
 // ─────────────────────────────────────────────────────────────
 // AUTH DIALOG
@@ -156,8 +157,6 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  bool catererMode = false;
-
   User? get _currentUser => FirebaseAuth.instance.currentUser;
   bool get _isLoggedIn => _currentUser != null;
 
@@ -198,12 +197,28 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── ONLY CHANGE: pushes CatererRegistrationPage instead of CatererAuthPage ──
-  void _showCatererModeDialog(BuildContext context) {
+  // ─────────────────────────────────────────────────────────
+  // CATERER MODE HANDLER
+  // Called when the user taps the Caterer Mode tile.
+  //   • already a caterer  → open dashboard directly
+  //   • not yet a caterer  → show registration dialog
+  // ─────────────────────────────────────────────────────────
+  void _handleCatererModeTap(bool isCaterer) {
+    if (isCaterer) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CatererDashboardPage()),
+      );
+    } else {
+      _showCatererRegistrationDialog();
+    }
+  }
+
+  void _showCatererRegistrationDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Dialog(
+      builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -229,7 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'Caterer Mode',
+                'Become a Caterer',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -238,7 +253,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'You need to log in or create a caterer account to enable Caterer Mode. Would you like to proceed?',
+                'Register your catering business to start receiving bookings. Would you like to proceed?',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
@@ -251,7 +266,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(ctx),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -271,18 +286,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        // ── Navigate to CatererRegistrationPage ──
-                        final result = await Navigator.push<bool>(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const CatererRegistrationPage(),
                           ),
                         );
-                        if (result == true && mounted) {
-                          setState(() => catererMode = true);
-                        }
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -388,6 +399,9 @@ class _ProfilePageState extends State<ProfilePage> {
         final reviewCount = (data?['review_count'] as int?) ?? 0;
         final favoriteCount = (data?['favorite_count'] as int?) ?? 0;
 
+        // ── Read is_caterer live from Firestore stream ────────
+        final isCaterer = data?['is_caterer'] as bool? ?? false;
+
         ImageProvider? avatarImage;
         if (photo.isNotEmpty) {
           avatarImage = photo.startsWith('data:image')
@@ -397,6 +411,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
         return ListView(
           children: [
+            // ── Profile card ──────────────────────────────────
             Container(
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
@@ -488,19 +503,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
-            _SwitchTile(
-              iconPath: "assets/icons/help_support_ic.svg",
-              title: "Caterer Mode",
-              subtitle: "Manage your catering business",
-              value: catererMode,
-              onChanged: (value) {
-                if (value) {
-                  _showCatererModeDialog(context);
-                } else {
-                  setState(() => catererMode = false);
-                }
-              },
+
+            // ── Caterer Mode tile ─────────────────────────────
+            // The whole tile is tappable via onTap on the ListTile.
+            // The Switch inside is wrapped in IgnorePointer so it
+            // is purely visual — tapping it won't try to toggle OFF
+            // when isCaterer is already true.
+            _CatererModeTile(
+              isCaterer: isCaterer,
+              onTap: () => _handleCatererModeTap(isCaterer),
             ),
+
             _MenuTile(
               iconPath: "assets/icons/mybooking_ic.svg",
               title: "My Booking",
@@ -643,12 +656,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
         ),
-        _SwitchTile(
-          iconPath: "assets/icons/help_support_ic.svg",
-          title: "Caterer Mode",
-          subtitle: "Manage your catering business",
-          value: false,
-          onChanged: (_) => showLoginRequiredDialog(context),
+        _CatererModeTile(
+          isCaterer: false,
+          onTap: () => showLoginRequiredDialog(context),
         ),
         _MenuTile(
           iconPath: "assets/icons/mybooking_ic.svg",
@@ -708,704 +718,44 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CATERER AUTH PAGE  —  kept exactly as original
+// CATERER MODE TILE
+//
+// The entire ListTile is tappable via onTap.
+// The Switch is wrapped in IgnorePointer so it is visual-only
+// and never intercepts taps — this fixes the bug where tapping
+// an already-ON switch would fire "turn OFF" instead of opening
+// the dashboard.
 // ─────────────────────────────────────────────────────────────
+class _CatererModeTile extends StatelessWidget {
+  final bool isCaterer;
+  final VoidCallback onTap;
 
-class CatererAuthPage extends StatefulWidget {
-  const CatererAuthPage({super.key});
-
-  @override
-  State<CatererAuthPage> createState() => _CatererAuthPageState();
-}
-
-class _CatererAuthPageState extends State<CatererAuthPage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  const _CatererModeTile({required this.isCaterer, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFFFDF3),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFFFFDF3),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context, false),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF8A00), Color(0xFFFF3D3D)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.restaurant_menu,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Caterer Account',
-              style: TextStyle(
-                color: Colors.black87,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 6),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3E3CE),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFA4A2A), Color(0xFFFFA726)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.black54,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-                tabs: const [
-                  Tab(text: 'Log In'),
-                  Tab(text: 'Register'),
-                ],
-              ),
-            ),
-          ),
+    return ListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        backgroundColor: Colors.orange.withValues(alpha: 0.15),
+        child: SvgPicture.asset(
+          "assets/icons/help_support_ic.svg",
+          width: 22,
+          height: 22,
+          colorFilter: const ColorFilter.mode(Colors.orange, BlendMode.srcIn),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _CatererLoginTab(onSuccess: () => Navigator.pop(context, true)),
-          _CatererRegisterTab(onSuccess: () => Navigator.pop(context, true)),
-        ],
+      title: const Text("Caterer Mode"),
+      subtitle: Text(
+        isCaterer
+            ? "Tap to open your dashboard"
+            : "Manage your catering business",
       ),
-    );
-  }
-}
-
-class _CatererLoginTab extends StatefulWidget {
-  final VoidCallback onSuccess;
-  const _CatererLoginTab({required this.onSuccess});
-
-  @override
-  State<_CatererLoginTab> createState() => _CatererLoginTabState();
-}
-
-class _CatererLoginTabState extends State<_CatererLoginTab> {
-  bool _obscurePassword = true;
-  bool _isLoading = false;
-  final TextEditingController emailCtrl = TextEditingController();
-  final TextEditingController passCtrl = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  @override
-  void dispose() {
-    emailCtrl.dispose();
-    passCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loginCaterer() async {
-    if (emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please enter email and password"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    setState(() => _isLoading = true);
-    try {
-      final cred = await _auth.signInWithEmailAndPassword(
-        email: emailCtrl.text.trim(),
-        password: passCtrl.text.trim(),
-      );
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(cred.user!.uid)
-          .get();
-      final isCaterer = userDoc.data()?['is_caterer'] ?? false;
-      if (!isCaterer) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("This account is not registered as a caterer."),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Caterer login successful!"),
-            backgroundColor: Colors.green,
-            duration: Duration(milliseconds: 800),
-          ),
-        );
-        await Future.delayed(const Duration(milliseconds: 600));
-        widget.onSuccess();
-      }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        String message = "Login failed.";
-        if (e.code == 'user-not-found')
-          message = "No account found for this email.";
-        if (e.code == 'wrong-password') message = "Incorrect password.";
-        if (e.code == 'invalid-email') message = "Invalid email address.";
-        if (e.code == 'invalid-credential')
-          message = "Invalid email or password.";
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  InputDecoration _inputDec(String hint) => InputDecoration(
-    hintText: hint,
-    hintStyle: const TextStyle(color: Colors.grey),
-    filled: true,
-    fillColor: const Color(0xFFF3E3CE),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(30),
-      borderSide: BorderSide.none,
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 30),
-          Image.asset(
-            'assets/logo.png',
-            height: 200,
-            errorBuilder: (_, __, ___) => const Icon(
-              Icons.restaurant,
-              size: 80,
-              color: Colors.deepOrange,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              "Login to your caterer account",
-              style: TextStyle(
-                color: Color(0xFFE65C2A),
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: emailCtrl,
-            enabled: !_isLoading,
-            keyboardType: TextInputType.emailAddress,
-            decoration: _inputDec("Username / Email"),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: passCtrl,
-            enabled: !_isLoading,
-            obscureText: _obscurePassword,
-            decoration: _inputDec("Password").copyWith(
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                  color: const Color(0xFFE65C2A),
-                ),
-                onPressed: () =>
-                    setState(() => _obscurePassword = !_obscurePassword),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _isLoading ? null : () {},
-              child: const Text(
-                "Forgot Password?",
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: _isLoading
-                      ? [Colors.grey, Colors.grey]
-                      : [const Color(0xFFFA4A2A), const Color(0xFFFFA726)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _loginCaterer,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Log in',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Row(
-            children: [
-              Expanded(child: Divider(thickness: 1)),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                  "OR",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(child: Divider(thickness: 1)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF3E3CE),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    side: const BorderSide(color: Colors.black12),
-                  ),
-                  onPressed: _isLoading ? null : () {},
-                  icon: Image.asset(
-                    'assets/facebook.png',
-                    width: 22,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.facebook, color: Colors.blue),
-                  ),
-                  label: const Text(
-                    "Facebook",
-                    style: TextStyle(color: Colors.black87),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF3E3CE),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    side: const BorderSide(color: Colors.black12),
-                  ),
-                  onPressed: _isLoading ? null : () {},
-                  icon: Image.asset(
-                    'assets/google.png',
-                    width: 22,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.g_mobiledata, color: Colors.red),
-                  ),
-                  label: const Text(
-                    "Google",
-                    style: TextStyle(color: Colors.black87),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-        ],
-      ),
-    );
-  }
-}
-
-class _CatererRegisterTab extends StatefulWidget {
-  final VoidCallback onSuccess;
-  const _CatererRegisterTab({required this.onSuccess});
-
-  @override
-  State<_CatererRegisterTab> createState() => _CatererRegisterTabState();
-}
-
-class _CatererRegisterTabState extends State<_CatererRegisterTab> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  bool _acceptTerms = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
-  bool _isLoading = false;
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  String? _validateName(String? v) {
-    if (v == null || v.isEmpty) return 'Name / Business name is required';
-    if (v.length < 3) return 'Must be at least 3 characters';
-    return null;
-  }
-
-  String? _validateEmail(String? v) {
-    if (v == null || v.isEmpty) return 'Email is required';
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v))
-      return 'Please enter a valid email';
-    return null;
-  }
-
-  String? _validatePassword(String? v) {
-    if (v == null || v.isEmpty) return 'Password is required';
-    if (v.length < 6) return 'Must be at least 6 characters';
-    return null;
-  }
-
-  String? _validateConfirm(String? v) {
-    if (v == null || v.isEmpty) return 'Confirm your password';
-    if (v != _passwordController.text) return 'Passwords do not match';
-    return null;
-  }
-
-  Future<void> _saveAndProceed() async {
-    setState(() => _isLoading = true);
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        final cred = await _auth.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-        );
-        await _firestore.collection('users').doc(cred.user!.uid).set({
-          'uid': cred.user!.uid,
-          'name': _nameController.text.trim(),
-          'email': _emailController.text.trim(),
-          'is_caterer': true,
-          'photo': '',
-          'booking_count': 0,
-          'review_count': 0,
-          'favorite_count': 0,
-          'created_at': FieldValue.serverTimestamp(),
-        });
-        await _firestore.collection('caterers').doc(cred.user!.uid).set({
-          'caterer_id': cred.user!.uid,
-          'user_id': cred.user!.uid,
-          'name': _nameController.text.trim(),
-          'description': '',
-          'location': '',
-          'rating': 0.0,
-          'minimum_guests': 30,
-          'created_at': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await _firestore.collection('users').doc(user.uid).update({
-          'is_caterer': true,
-        });
-        await _firestore.collection('caterers').doc(user.uid).set({
-          'caterer_id': user.uid,
-          'user_id': user.uid,
-          'name': _nameController.text.trim(),
-          'description': '',
-          'location': '',
-          'rating': 0.0,
-          'minimum_guests': 30,
-          'created_at': FieldValue.serverTimestamp(),
-        });
-      }
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Caterer account created! 🎉"),
-            backgroundColor: Colors.green,
-            duration: Duration(milliseconds: 800),
-          ),
-        );
-        await Future.delayed(const Duration(milliseconds: 600));
-        widget.onSuccess();
-      }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        String msg = "Registration failed.";
-        if (e.code == 'email-already-in-use') msg = "Email already registered.";
-        if (e.code == 'weak-password') msg = "Password too weak.";
-        if (e.code == 'invalid-email') msg = "Invalid email address.";
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  void _handleRegister() {
-    if (!_formKey.currentState!.validate()) return;
-    if (!_acceptTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please accept Privacy & Terms of Use"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    _saveAndProceed();
-  }
-
-  InputDecoration _input(String hint) => InputDecoration(
-    hintText: hint,
-    filled: true,
-    fillColor: const Color(0xFFF5E6D3),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(25),
-      borderSide: BorderSide.none,
-    ),
-    hintStyle: TextStyle(color: Colors.brown.shade300),
-  );
-
-  IconButton _toggleIcon(bool state, VoidCallback onTap) => IconButton(
-    icon: Icon(
-      state ? Icons.visibility_off : Icons.visibility,
-      color: const Color(0xFFFF6347),
-    ),
-    onPressed: onTap,
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 30),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              const SizedBox(height: 30),
-              Image.asset(
-                'assets/logo.png',
-                height: 140,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.restaurant,
-                  size: 60,
-                  color: Colors.deepOrange,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Create your caterer account",
-                  style: TextStyle(
-                    color: Color(0xFFE65C2A),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _nameController,
-                enabled: !_isLoading,
-                validator: _validateName,
-                decoration: _input("Full Name / Business Name"),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _emailController,
-                enabled: !_isLoading,
-                validator: _validateEmail,
-                keyboardType: TextInputType.emailAddress,
-                decoration: _input("Email"),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _passwordController,
-                enabled: !_isLoading,
-                validator: _validatePassword,
-                obscureText: _obscurePassword,
-                decoration: _input("Password").copyWith(
-                  suffixIcon: _toggleIcon(
-                    _obscurePassword,
-                    () => setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _confirmPasswordController,
-                enabled: !_isLoading,
-                validator: _validateConfirm,
-                obscureText: _obscureConfirm,
-                decoration: _input("Confirm Password").copyWith(
-                  suffixIcon: _toggleIcon(
-                    _obscureConfirm,
-                    () => setState(() => _obscureConfirm = !_obscureConfirm),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Checkbox(
-                    value: _acceptTerms,
-                    onChanged: _isLoading
-                        ? null
-                        : (v) => setState(() => _acceptTerms = v ?? false),
-                    activeColor: const Color(0xFFFF6347),
-                  ),
-                  const Text(
-                    "I accept Privacy & Term of Use",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: _isLoading
-                          ? [Colors.grey, Colors.grey]
-                          : [const Color(0xFFFFA726), const Color(0xFFFA4A2A)],
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleRegister,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            "Register",
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-            ],
-          ),
+      trailing: IgnorePointer(
+        child: Switch(
+          value: isCaterer,
+          activeTrackColor: Colors.orange,
+          onChanged: (_) {},
         ),
       ),
     );
@@ -1796,43 +1146,6 @@ class _StatItem extends StatelessWidget {
           style: const TextStyle(color: Colors.white70, fontSize: 14),
         ),
       ],
-    );
-  }
-}
-
-class _SwitchTile extends StatelessWidget {
-  final String iconPath;
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  const _SwitchTile({
-    required this.iconPath,
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.orange.withValues(alpha: 0.15),
-        child: SvgPicture.asset(
-          iconPath,
-          width: 22,
-          height: 22,
-          colorFilter: const ColorFilter.mode(Colors.orange, BlendMode.srcIn),
-        ),
-      ),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: Switch(
-        value: value,
-        activeTrackColor: Colors.orange,
-        onChanged: onChanged,
-      ),
     );
   }
 }

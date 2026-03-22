@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'datetime_picker_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'payment_page.dart';
 
 class CustomizePackagePage extends StatefulWidget {
   const CustomizePackagePage({super.key});
@@ -9,63 +10,133 @@ class CustomizePackagePage extends StatefulWidget {
 }
 
 class _CustomizePackagePageState extends State<CustomizePackagePage> {
-  String selectedTab = 'food';
+  int guests = 100;
+  String selectedEventType = 'Birthday';
+  DateTime? selectedDate;
+  TimeOfDay? selectedTime;
+  String additionalNotes = '';
 
-  Set<String> selectedAppetizers = {};
-  Set<String> selectedMainCourse = {};
-  Set<String> selectedDesserts = {};
-  Set<String> selectedDrinks = {};
-  Set<String> selectedDecorations = {};
-  Set<String> selectedExtraServices = {};
+  final List<String> eventTypes = [
+    'Birthday',
+    'Anniversary',
+    'Wedding',
+    'Baptism',
+    'Other',
+  ];
 
-  int get totalFoodItems {
-    return selectedAppetizers.length +
-        selectedMainCourse.length +
-        selectedDesserts.length +
-        selectedDrinks.length;
+  final List<String> decorationItems = [
+    'Balloon Arch',
+    'Table Centerpieces',
+    'Photo Booth',
+    'Backdrop',
+    'Chair covers',
+    'Lighting',
+  ];
+
+  final List<String> extraServiceItems = [
+    'Sound System',
+    'DJ',
+    'Emcee / Host',
+    'Photographer',
+    'Videographer',
+    'Live Band',
+  ];
+
+  final Set<String> selectedDecorations = {'Balloon Arch'};
+  final Set<String> selectedExtras = {
+    'Sound System',
+    'DJ',
+    'Photographer',
+    'Live Band',
+  };
+
+  final double pricePerPerson = 500;
+  final int addOnPrice = 1000;
+
+  double get totalAmount {
+    double base = pricePerPerson * guests;
+    double addOns =
+        (selectedDecorations.length + selectedExtras.length) *
+        addOnPrice.toDouble();
+    return base + addOns;
   }
 
-  int get totalDecorations {
-    return selectedDecorations.length + selectedExtraServices.length;
+  void _pickDate() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) setState(() => selectedDate = picked);
   }
 
-  int get totalItems => totalFoodItems + totalDecorations;
-
-  bool get canProceed => totalItems > 0;
-
-  void _switchTab(String tab) {
-    if (selectedTab != tab) {
-      setState(() {
-        selectedTab = tab;
-      });
-    }
+  void _pickTime() async {
+    TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) setState(() => selectedTime = picked);
   }
 
-  void _proceedToNext() {
-    if (!canProceed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select at least one item to proceed'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
+  /// Check Firebase Auth before proceeding to Payment
+  void _onBookNow() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      // Not logged in — show dialog prompting login
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "Login Required",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            "You need to be logged in to book. Please log in or create an account to continue.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                // TODO: Navigate to your login page, e.g.:
+                // Navigator.push(context, MaterialPageRoute(builder: (_) => LoginPage()));
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text("Log In"),
+            ),
+          ],
         ),
       );
       return;
     }
 
-    final selectedData = {
-      'appetizers': selectedAppetizers.toList(),
-      'mainCourse': selectedMainCourse.toList(),
-      'desserts': selectedDesserts.toList(),
-      'drinks': selectedDrinks.toList(),
-      'decorations': selectedDecorations.toList(),
-      'extraServices': selectedExtraServices.toList(),
-    };
-
+    // Logged in — proceed to payment
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => DateTimePickerPage(selectedItems: selectedData),
+        builder: (_) => PaymentPage(
+          guests: guests,
+          eventType: selectedEventType,
+          selectedDate: selectedDate,
+          selectedTime: selectedTime,
+          totalAmount: totalAmount,
+          selectedDecorations: selectedDecorations,
+          selectedExtras: selectedExtras,
+        ),
       ),
     );
   }
@@ -73,161 +144,458 @@ class _CustomizePackagePageState extends State<CustomizePackagePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFF2F2F2),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const BackButton(color: Colors.black),
         title: const Text(
-          'Customize Package',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+          "Event Details",
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w700,
+            fontStyle: FontStyle.italic,
+            fontSize: 20,
+          ),
         ),
       ),
       body: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
+                  // ── Event Type ──
+                  _card(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Build Your Perfect Event',
+                        const Text(
+                          "Event Type",
                           style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2C3E50),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
                           ),
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Customize food and decorations for your event',
-                          style: TextStyle(color: Colors.black54, fontSize: 14),
-                        ),
+                        const SizedBox(height: 12),
+                        _buildEventTypeGrid(),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20),
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF3E0),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                  const SizedBox(height: 12),
+
+                  // ── Event Date & Time ──
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Total Items Selected:',
+                          "Event Date & Time",
                           style: TextStyle(
-                            color: Colors.deepOrange,
-                            fontSize: 15,
                             fontWeight: FontWeight.w600,
+                            fontSize: 15,
                           ),
                         ),
-                        Text(
-                          '$totalItems',
-                          style: const TextStyle(
-                            color: Colors.deepOrange,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        const SizedBox(height: 12),
+                        _dateTimeRow(
+                          label: selectedDate == null
+                              ? "dd/mm/yyyy"
+                              : "${selectedDate!.day.toString().padLeft(2, '0')}/${selectedDate!.month.toString().padLeft(2, '0')}/${selectedDate!.year}",
+                          leftIcon: Icons.calendar_today_outlined,
+                          rightIcon: Icons.calendar_month_outlined,
+                          onTap: _pickDate,
+                          hasValue: selectedDate != null,
+                        ),
+                        const SizedBox(height: 10),
+                        _dateTimeRow(
+                          label: selectedTime == null
+                              ? "--:-- --"
+                              : selectedTime!.format(context),
+                          leftIcon: Icons.access_time_outlined,
+                          rightIcon: Icons.access_time_outlined,
+                          onTap: _pickTime,
+                          hasValue: selectedTime != null,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
+
+                  const SizedBox(height: 12),
+
+                  // ── Number of Guests ──
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _buildTabButton(
-                            icon: Icons.restaurant,
-                            label: 'Food & Drinks',
-                            count: totalFoodItems,
-                            isSelected: selectedTab == 'food',
-                            onTap: () => _switchTab('food'),
+                        const Text(
+                          "Number of Guests",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTabButton(
-                            icon: Icons.card_giftcard,
-                            label: 'Decorations & Extras',
-                            count: totalDecorations,
-                            isSelected: selectedTab == 'decorations',
-                            onTap: () => _switchTab('decorations'),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (guests > 1) setState(() => guests--);
+                              },
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.grey.shade200,
+                                ),
+                                child: const Icon(
+                                  Icons.remove,
+                                  color: Colors.black54,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                            Column(
+                              children: [
+                                Text(
+                                  guests.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Text(
+                                  "guests",
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            GestureDetector(
+                              onTap: () => setState(() => guests++),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.deepOrange,
+                                ),
+                                child: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Event Venue ──
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Event Venue",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          height: 90,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                color: Colors.grey.shade500,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "Enter venue address",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFE0B2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.map_outlined,
+                                color: Colors.deepOrange,
+                                size: 18,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                "View on Map",
+                                style: TextStyle(
+                                  color: Colors.deepOrange,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  if (selectedTab == 'food')
-                    _buildFoodSection()
-                  else
-                    _buildDecorationsSection(),
-                  const SizedBox(height: 100),
+
+                  const SizedBox(height: 12),
+
+                  // ── Decoration & Extras ──
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Decoration & Extras",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const Text(
+                          "Optional - additional charges may apply",
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "DECORATIONS",
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...decorationItems.map((item) {
+                          bool selected = selectedDecorations.contains(item);
+                          return _addonRow(
+                            label: item,
+                            selected: selected,
+                            onTap: () => setState(() {
+                              selected
+                                  ? selectedDecorations.remove(item)
+                                  : selectedDecorations.add(item);
+                            }),
+                          );
+                        }),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "EXTRA SERVICES",
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...extraServiceItems.map((item) {
+                          bool selected = selectedExtras.contains(item);
+                          return _addonRow(
+                            label: item,
+                            selected: selected,
+                            onTap: () => setState(() {
+                              selected
+                                  ? selectedExtras.remove(item)
+                                  : selectedExtras.add(item);
+                            }),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Additional Notes ──
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Addittional Notes (optional)",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: TextField(
+                            maxLines: 4,
+                            onChanged: (v) =>
+                                setState(() => additionalNotes = v),
+                            decoration: const InputDecoration(
+                              hintText:
+                                  "Any special request or dietary requirements...",
+                              hintStyle: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.all(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Price Summary ──
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Price Summary",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Price per person",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              "Php ${pricePerPerson.toInt()}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Number of guest",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              guests.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(color: Colors.white38, thickness: 1),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Total amount",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              "Php ${_formatAmount(totalAmount)}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
           ),
+
+          // ── Book Now ──
           Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, -3),
-                ),
-              ],
-            ),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            color: Colors.white,
             child: SafeArea(
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _proceedToNext,
+                  onPressed: _onBookNow,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: canProceed
-                        ? Colors.deepOrange
-                        : Colors.grey.shade400,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.deepOrange,
+                    foregroundColor: Colors.white, // ← fixes purple text
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(30),
                     ),
-                    elevation: canProceed ? 2 : 0,
+                    elevation: 0,
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        canProceed
-                            ? 'Next - Select Date & Time'
-                            : 'Select Items to Continue',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (canProceed) ...[
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward, size: 20),
-                      ],
-                    ],
+                  child: const Text(
+                    "Book Now",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -238,262 +606,154 @@ class _CustomizePackagePageState extends State<CustomizePackagePage> {
     );
   }
 
-  Widget _buildTabButton({
-    required IconData icon,
+  // ── Helpers ──
+
+  Widget _buildEventTypeGrid() {
+    final pairs = <Widget>[];
+    for (int i = 0; i < eventTypes.length; i += 2) {
+      final first = eventTypes[i];
+      final second = i + 1 < eventTypes.length ? eventTypes[i + 1] : null;
+      pairs.add(
+        Row(
+          children: [
+            Expanded(child: _eventChip(first)),
+            const SizedBox(width: 10),
+            second != null
+                ? Expanded(child: _eventChip(second))
+                : const Expanded(child: SizedBox()),
+          ],
+        ),
+      );
+      pairs.add(const SizedBox(height: 10));
+    }
+    return Column(children: pairs);
+  }
+
+  Widget _eventChip(String type) {
+    bool selected = selectedEventType == type;
+    return GestureDetector(
+      onTap: () => setState(() => selectedEventType = type),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.deepOrange : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          type,
+          style: TextStyle(
+            color: selected ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dateTimeRow({
     required String label,
-    required int count,
-    required bool isSelected,
+    required IconData leftIcon,
+    required IconData rightIcon,
     required VoidCallback onTap,
+    required bool hasValue,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.deepOrange : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? Colors.deepOrange : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.deepOrange.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.black54,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
+            Icon(leftIcon, size: 18, color: Colors.grey),
+            const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  if (count > 0) ...[
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Colors.white.withOpacity(0.3)
-                            : Colors.orange.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '$count',
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.deepOrange,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: hasValue ? Colors.black87 : Colors.grey,
+                ),
               ),
             ),
+            Icon(rightIcon, size: 18, color: Colors.grey),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFoodSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildCategorySection('Appetizers', selectedAppetizers.length, [
-          'Beef Lumpiang Shanghai',
-          'Chicken Lumpiang Shanghai',
-          'Fried Ham and Cheese Roll',
-          'Crispy Fried Calamari',
-        ], selectedAppetizers),
-        const SizedBox(height: 20),
-        _buildCategorySection('Main Course', selectedMainCourse.length, [
-          'Lechon Baboy',
-          'Beef Caldereta',
-          'Pancit Bihon',
-          'Beef Steak',
-          'Pork Menudo',
-          'Fish Fillet',
-        ], selectedMainCourse),
-        const SizedBox(height: 20),
-        _buildCategorySection('Desserts', selectedDesserts.length, [
-          'Leche Flan',
-          'Cassava Cake',
-          'Buko Pandan',
-          'Fruit Salad',
-          'Kutsinta',
-        ], selectedDesserts),
-        const SizedBox(height: 20),
-        _buildCategorySection('Drinks', selectedDrinks.length, [
-          'Iced Tea',
-          'Soft Drinks',
-          'Fresh Juice',
-          'Coffee',
-          'Water',
-          'Beer',
-        ], selectedDrinks),
-      ],
-    );
-  }
-
-  Widget _buildDecorationsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildCategorySection('Decorations', selectedDecorations.length, [
-          'Balloon Arch',
-          'Table Centerpieces',
-          'Photo Booth',
-          'Backdrop',
-          'Chair Covers',
-          'Lighting',
-        ], selectedDecorations),
-        const SizedBox(height: 20),
-        _buildCategorySection('Extra Services', selectedExtraServices.length, [
-          'Sound System',
-          'Service Staff',
-          'Event Host',
-          'Photographer',
-          'Live Band',
-          'DJ',
-        ], selectedExtraServices),
-        const SizedBox(height: 20),
-        if (totalDecorations > 0) _buildPackageSummary(),
-      ],
-    );
-  }
-
-  Widget _buildCategorySection(
-    String title,
-    int count,
-    List<String> items,
-    Set<String> selectedSet,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (count > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$count',
-                    style: const TextStyle(
-                      color: Colors.deepOrange,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...items.map((item) => _buildSelectionItem(item, selectedSet)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSelectionItem(String title, Set<String> selectedSet) {
-    final isSelected = selectedSet.contains(title);
-
+  Widget _addonRow({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (isSelected) {
-            selectedSet.remove(title);
-          } else {
-            selectedSet.add(title);
-          }
-        });
-      },
+      onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFFF3E0) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? const Color(0xFFFFF3EE) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? Colors.deepOrange : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
+            color: selected ? Colors.deepOrange : Colors.transparent,
+            width: 1.5,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.orange.withOpacity(0.2),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? Colors.deepOrange : Colors.black87,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: selected ? Colors.deepOrange : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.star_border_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: selected ? Colors.deepOrange : Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    "+ 1,000",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: selected ? Colors.deepOrange : Colors.grey,
+                    ),
+                  ),
+                ],
               ),
             ),
             Container(
-              width: 24,
-              height: 24,
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
-                color: isSelected ? Colors.deepOrange : Colors.transparent,
-                shape: BoxShape.circle,
+                color: selected ? Colors.deepOrange : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: isSelected ? Colors.deepOrange : Colors.grey.shade400,
-                  width: 2,
+                  color: selected ? Colors.deepOrange : Colors.grey.shade400,
+                  width: 1.5,
                 ),
               ),
-              child: isSelected
-                  ? const Icon(Icons.check, size: 16, color: Colors.white)
+              child: selected
+                  ? const Icon(Icons.check, color: Colors.white, size: 14)
                   : null,
             ),
           ],
@@ -502,81 +762,32 @@ class _CustomizePackagePageState extends State<CustomizePackagePage> {
     );
   }
 
-  Widget _buildPackageSummary() {
+  Widget _card({required Widget child}) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Package Summary',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2C3E50),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Food Items:',
-                style: TextStyle(color: Colors.black87, fontSize: 14),
-              ),
-              Text(
-                '$totalFoodItems',
-                style: const TextStyle(
-                  color: Colors.deepOrange,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Decorations & Extras:',
-                style: TextStyle(color: Colors.black87, fontSize: 14),
-              ),
-              Text(
-                '$totalDecorations',
-                style: const TextStyle(
-                  color: Colors.deepOrange,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 16),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Ready to proceed with your custom package!',
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
+      child: child,
     );
+  }
+
+  String _formatAmount(double amount) {
+    final parts = amount.toStringAsFixed(0).split('');
+    final buffer = StringBuffer();
+    for (int i = 0; i < parts.length; i++) {
+      if (i > 0 && (parts.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(parts[i]);
+    }
+    return buffer.toString();
   }
 }

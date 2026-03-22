@@ -1,14 +1,39 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:celebreats/caterer_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'caterer_dashboard.dart'; // ← adjust path if needed
 
 // ─────────────────────────────────────────────────────────────
 // CATERER REGISTRATION PAGE
-// Multi-step form inspired by Grab / Shopee / Foodpanda onboarding
-// Step 1: Business Info  |  Step 2: Cuisine & Location  |  Step 3: Photos
+//
+// Writes to Firestore (matching your schema):
+//
+//  users/{uid}
+//    └─ is_caterer: true
+//
+//  caterers/{uid}
+//    ├─ caterer_id       (string)
+//    ├─ user_id          (string)
+//    ├─ name             (string)  ← business name
+//    ├─ owner_name       (string)
+//    ├─ contact          (string)
+//    ├─ email            (string)
+//    ├─ location         (string)  ← address
+//    ├─ service_area     (string)
+//    ├─ business_permit  (string)  ← base64
+//    ├─ valid_id         (string)  ← base64
+//    ├─ menu_photos      (array)   ← base64 strings
+//    ├─ rating           0.0
+//    ├─ review_count     0
+//    ├─ is_verified      false
+//    ├─ is_active        true
+//    ├─ created_at       (timestamp)
+//    └─ updated_at       (timestamp)
 // ─────────────────────────────────────────────────────────────
 
 class CatererRegistrationPage extends StatefulWidget {
@@ -19,143 +44,51 @@ class CatererRegistrationPage extends StatefulWidget {
       _CatererRegistrationPageState();
 }
 
-class _CatererRegistrationPageState extends State<CatererRegistrationPage>
-    with TickerProviderStateMixin {
-  // ── Step control ──────────────────────────────────────────
-  int _currentStep = 0;
-  final int _totalSteps = 3;
-  late AnimationController _progressController;
-  late Animation<double> _progressAnimation;
-
-  // ── Form keys per step ────────────────────────────────────
-  final _step0Key = GlobalKey<FormState>();
-  final _step1Key = GlobalKey<FormState>();
+class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
+  // ── Form ──────────────────────────────────────────────────
+  final _formKey = GlobalKey<FormState>();
 
   // ── Controllers ───────────────────────────────────────────
   final _businessNameCtrl = TextEditingController();
-  final _descriptionCtrl = TextEditingController();
-  final _serviceAreaCtrl = TextEditingController();
+  final _ownerNameCtrl = TextEditingController();
   final _contactCtrl = TextEditingController();
-  final _minGuestsCtrl = TextEditingController(text: '30');
-  final _maxGuestsCtrl = TextEditingController(text: '200');
+  final _emailCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
+  final _serviceAreaCtrl = TextEditingController();
 
-  // ── Images ────────────────────────────────────────────────
-  File? _logoFile;
-  final List<File> _photoFiles = [];
+  // ── Files (base64 — Spark plan compatible) ─────────────────
+  File? _businessPermitFile;
+  File? _validIdFile;
+  final List<File> _menuPhotoFiles = [];
   final ImagePicker _picker = ImagePicker();
 
-  // ── Cuisine tags ──────────────────────────────────────────
-  final List<Map<String, dynamic>> _cuisineOptions = [
-    {'label': 'Filipino', 'icon': '🍚'},
-    {'label': 'BBQ', 'icon': '🔥'},
-    {'label': 'Asian', 'icon': '🥢'},
-    {'label': 'Western', 'icon': '🥩'},
-    {'label': 'Seafood', 'icon': '🦐'},
-    {'label': 'Desserts', 'icon': '🍰'},
-    {'label': 'Vegan', 'icon': '🥗'},
-    {'label': 'Halal', 'icon': '☪️'},
-    {'label': 'Buffet', 'icon': '🍽️'},
-    {'label': 'Lechon', 'icon': '🐷'},
-  ];
-  final Set<String> _selectedCuisines = {};
-
-  // ── Event types ───────────────────────────────────────────
-  final List<String> _eventTypes = [
-    'Birthday',
-    'Wedding',
-    'Corporate',
-    'Debut',
-    'Baptismal',
-    'Anniversary',
-    'Graduation',
-    'Others',
-  ];
-  final Set<String> _selectedEvents = {};
-
-  // ── Loading ───────────────────────────────────────────────
+  // ── Submit state ──────────────────────────────────────────
   bool _isLoading = false;
+  String _uploadStatus = '';
 
   // ── Colors ────────────────────────────────────────────────
   static const Color _primary = Color(0xFFFF6B22);
-  static const Color _primaryLight = Color(0xFFFF8C5A);
-  static const Color _primaryBg = Color(0x1AFF6B22);
-  static const Color _surface = Color(0xFFF8F8F8);
-  static const Color _border = Color(0xFFEEEEEE);
-
-  @override
-  void initState() {
-    super.initState();
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _progressAnimation = Tween<double>(begin: 0, end: 1 / _totalSteps).animate(
-      CurvedAnimation(parent: _progressController, curve: Curves.easeInOut),
-    );
-    _progressController.forward();
-  }
+  static const Color _primaryLight = Color(0xFFFFAA55);
+  static const Color _primaryBg = Color(0xFFFFF3ED);
+  static const Color _border = Color(0xFFE5E5E5);
+  static const Color _textDark = Color(0xFF1A1A1A);
+  static const Color _textMid = Color(0xFF777777);
+  static const Color _textLight = Color(0xFFAAAAAA);
 
   @override
   void dispose() {
-    _progressController.dispose();
     _businessNameCtrl.dispose();
-    _descriptionCtrl.dispose();
-    _serviceAreaCtrl.dispose();
+    _ownerNameCtrl.dispose();
     _contactCtrl.dispose();
-    _minGuestsCtrl.dispose();
-    _maxGuestsCtrl.dispose();
+    _emailCtrl.dispose();
+    _locationCtrl.dispose();
+    _serviceAreaCtrl.dispose();
     super.dispose();
   }
 
-  // ── Step navigation ───────────────────────────────────────
-  void _nextStep() {
-    if (_currentStep == 0 && !(_step0Key.currentState?.validate() ?? false))
-      return;
-    if (_currentStep == 1) {
-      if (!(_step1Key.currentState?.validate() ?? false)) return;
-      if (_selectedCuisines.isEmpty) {
-        _showSnack('Please select at least one cuisine type.');
-        return;
-      }
-    }
-    if (_currentStep < _totalSteps - 1) {
-      setState(() => _currentStep++);
-      final target = (_currentStep + 1) / _totalSteps;
-      _progressAnimation =
-          Tween<double>(begin: _currentStep / _totalSteps, end: target).animate(
-            CurvedAnimation(
-              parent: _progressController,
-              curve: Curves.easeInOut,
-            ),
-          );
-      _progressController
-        ..reset()
-        ..forward();
-    }
-  }
-
-  void _prevStep() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
-      final target = _currentStep / _totalSteps;
-      _progressAnimation =
-          Tween<double>(
-            begin: (_currentStep + 1) / _totalSteps,
-            end: target,
-          ).animate(
-            CurvedAnimation(
-              parent: _progressController,
-              curve: Curves.easeInOut,
-            ),
-          );
-      _progressController
-        ..reset()
-        ..forward();
-    } else {
-      Navigator.pop(context);
-    }
-  }
-
+  // ─────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -167,55 +100,109 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage>
     );
   }
 
-  // ── Image pickers ─────────────────────────────────────────
-  Future<void> _pickLogo() async {
-    final XFile? img = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-    );
-    if (img != null) setState(() => _logoFile = File(img.path));
+  /// File → base64 data URI (same format as users.photo)
+  Future<String> _toBase64(File file) async {
+    final bytes = await file.readAsBytes();
+    return 'data:image/jpeg;base64,${base64Encode(bytes)}';
   }
 
-  Future<void> _pickPhoto() async {
-    if (_photoFiles.length >= 6) {
-      _showSnack('Maximum 6 photos allowed');
+  // ─────────────────────────────────────────────────────────
+  // FILE PICKERS
+  // ─────────────────────────────────────────────────────────
+  Future<void> _pickSingleFile(String type) async {
+    final XFile? img = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 60,
+    );
+    if (img == null) return;
+    setState(() {
+      if (type == 'permit') _businessPermitFile = File(img.path);
+      if (type == 'id') _validIdFile = File(img.path);
+    });
+  }
+
+  Future<void> _pickMenuPhoto() async {
+    if (_menuPhotoFiles.length >= 4) {
+      _showSnack('Maximum 4 photos allowed');
       return;
     }
     final XFile? img = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 80,
+      imageQuality: 50,
     );
-    if (img != null) setState(() => _photoFiles.add(File(img.path)));
+    if (img != null) setState(() => _menuPhotoFiles.add(File(img.path)));
   }
 
-  void _removePhoto(int i) => setState(() => _photoFiles.removeAt(i));
-
-  // ── Submit to Firestore ───────────────────────────────────
+  // ─────────────────────────────────────────────────────────
+  // SUBMIT
+  // ─────────────────────────────────────────────────────────
   Future<void> _handleSubmit() async {
-    setState(() => _isLoading = true);
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _isLoading = true;
+      _uploadStatus = 'Preparing data…';
+    });
+
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        await FirebaseFirestore.instance.collection('users').doc(uid).update({
-          'is_caterer': true,
-        });
-        await FirebaseFirestore.instance.collection('caterers').doc(uid).set({
-          'caterer_id': uid,
-          'user_id': uid,
-          'name': _businessNameCtrl.text.trim(),
-          'description': _descriptionCtrl.text.trim(),
-          'location': _serviceAreaCtrl.text.trim(),
-          'contact': _contactCtrl.text.trim(),
-          'cuisine_types': _selectedCuisines.toList(),
-          'event_types': _selectedEvents.toList(),
-          'min_guests': int.tryParse(_minGuestsCtrl.text) ?? 30,
-          'max_guests': int.tryParse(_maxGuestsCtrl.text) ?? 200,
-          'rating': 0.0,
-          'created_at': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+      if (uid == null) throw Exception('User not logged in.');
+
+      // Convert files → base64
+      String? permitBase64;
+      if (_businessPermitFile != null) {
+        setState(() => _uploadStatus = 'Processing business permit…');
+        permitBase64 = await _toBase64(_businessPermitFile!);
       }
-      setState(() => _isLoading = false);
+
+      String? idBase64;
+      if (_validIdFile != null) {
+        setState(() => _uploadStatus = 'Processing valid ID…');
+        idBase64 = await _toBase64(_validIdFile!);
+      }
+
+      final List<String> menuBase64 = [];
+      for (int i = 0; i < _menuPhotoFiles.length; i++) {
+        setState(
+          () => _uploadStatus =
+              'Processing photo ${i + 1} of ${_menuPhotoFiles.length}…',
+        );
+        menuBase64.add(await _toBase64(_menuPhotoFiles[i]));
+      }
+
+      // 1. users/{uid} → is_caterer: true
+      setState(() => _uploadStatus = 'Updating user profile…');
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'is_caterer': true,
+      });
+
+      // 2. caterers/{uid} → full document
+      setState(() => _uploadStatus = 'Saving caterer profile…');
+      await FirebaseFirestore.instance.collection('caterers').doc(uid).set({
+        'caterer_id': uid,
+        'user_id': uid,
+        'name': _businessNameCtrl.text.trim(),
+        'owner_name': _ownerNameCtrl.text.trim(),
+        'contact': _contactCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'location': _locationCtrl.text.trim(),
+        'service_area': _serviceAreaCtrl.text.trim(),
+        if (permitBase64 != null) 'business_permit': permitBase64,
+        if (idBase64 != null) 'valid_id': idBase64,
+        'menu_photos': menuBase64,
+        'rating': 0.0,
+        'review_count': 0,
+        'is_verified': false,
+        'is_active': true,
+        'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      setState(() {
+        _isLoading = false;
+        _uploadStatus = '';
+      });
       if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -224,968 +211,545 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage>
         ),
       );
     } catch (e) {
-      setState(() => _isLoading = false);
-      _showSnack('Error: $e');
+      setState(() {
+        _isLoading = false;
+        _uploadStatus = '';
+      });
+      _showSnack('Error: ${e.toString()}');
     }
   }
 
   // ─────────────────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
+      backgroundColor: const Color(0xFFF0F0F0),
+      body: Stack(
         children: [
-          _buildHeader(),
-          _buildStepIndicator(),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, anim) => SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.08, 0),
-                  end: Offset.zero,
-                ).animate(anim),
-                child: FadeTransition(opacity: anim, child: child),
+          Column(
+            children: [
+              _buildAppBar(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        _subtitleBanner(),
+                        const SizedBox(height: 12),
+                        _buildBusinessInfoCard(),
+                        const SizedBox(height: 12),
+                        _buildLocationCard(),
+                        const SizedBox(height: 12),
+                        _buildRequirementsCard(),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              child: _buildCurrentStep(),
-            ),
+              _buildBottomBar(),
+            ],
           ),
-          _buildBottomBar(),
+
+          // ── Progress overlay ───────────────────────────────
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.45),
+              child: Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: CircularProgressIndicator(
+                          color: _primary,
+                          strokeWidth: 4,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Submitting Registration',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _uploadStatus,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: _textMid,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: const LinearProgressIndicator(
+                          backgroundColor: Color(0xFFEEEEEE),
+                          color: _primary,
+                          minHeight: 4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // ── Header ────────────────────────────────────────────────
-  Widget _buildHeader() {
-    final stepTitles = [
-      'Business Info',
-      'Cuisine & Location',
-      'Photos & Review',
-    ];
-    final stepSubs = [
-      'Tell us about your catering business',
-      'What do you serve and where?',
-      'Add photos to attract more customers',
-    ];
+  // ── App bar ───────────────────────────────────────────────
+  Widget _buildAppBar() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_primary, _primaryLight],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+      color: Colors.white,
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 20, 16),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    onPressed: _prevStep,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          stepTitles[_currentStep],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          stepSubs[_currentStep],
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'Step ${_currentStep + 1} of $_totalSteps',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new,
+                        color: _textDark,
+                        size: 20,
                       ),
+                      onPressed: _isLoading
+                          ? null
+                          : () => Navigator.pop(context),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Step progress bar ─────────────────────────────────────
-  Widget _buildStepIndicator() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      child: Column(
-        children: [
-          Row(
-            children: List.generate(_totalSteps, (i) {
-              final done = i < _currentStep;
-              final active = i == _currentStep;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: i < _totalSteps - 1 ? 6 : 0),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: done || active
-                          ? _primary
-                          : const Color(0xFFEEEEEE),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _stepDot(0, 'Business'),
-              _stepDot(1, 'Cuisine'),
-              _stepDot(2, 'Photos'),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: _border),
-        ],
-      ),
-    );
-  }
-
-  Widget _stepDot(int step, String label) {
-    final done = step < _currentStep;
-    final active = step == _currentStep;
-    return Row(
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-            color: done
-                ? _primary
-                : active
-                ? _primary
-                : const Color(0xFFEEEEEE),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: done
-                ? const Icon(Icons.check, color: Colors.white, size: 13)
-                : Text(
-                    '${step + 1}',
+                  const Text(
+                    'Caterer Registration',
                     style: TextStyle(
-                      color: active ? Colors.white : const Color(0xFFAAAAAA),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      color: _primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
-                  ),
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-            color: active
-                ? _primary
-                : done
-                ? const Color(0xFF888888)
-                : const Color(0xFFAAAAAA),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Current step body ─────────────────────────────────────
-  Widget _buildCurrentStep() {
-    switch (_currentStep) {
-      case 0:
-        return _buildStep0();
-      case 1:
-        return _buildStep1();
-      case 2:
-        return _buildStep2();
-      default:
-        return const SizedBox();
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // STEP 0 — Business Info
-  // ─────────────────────────────────────────────────────────
-  Widget _buildStep0() {
-    return SingleChildScrollView(
-      key: const ValueKey(0),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Form(
-        key: _step0Key,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Logo upload — Grab-style centered card ──
-            Center(
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _pickLogo,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: _surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _logoFile != null ? _primary : _border,
-                          width: _logoFile != null ? 2 : 1,
-                        ),
-                        image: _logoFile != null
-                            ? DecorationImage(
-                                image: FileImage(_logoFile!),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: _logoFile == null
-                          ? Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: _primaryBg,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.add_a_photo_outlined,
-                                    color: _primary,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'Upload Logo',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: _primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _logoFile != null
-                        ? 'Tap to change logo'
-                        : 'Business logo (optional)',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 24),
-            _sectionLabel('BUSINESS DETAILS'),
-            const SizedBox(height: 10),
-
-            _buildField(
-              controller: _businessNameCtrl,
-              label: 'Business Name',
-              hint: 'e.g. Santos Catering Co.',
-              icon: Icons.storefront_outlined,
-              validator: (v) {
-                if (v == null || v.trim().isEmpty)
-                  return 'Business name is required';
-                if (v.trim().length < 3) return 'Must be at least 3 characters';
-                return null;
-              },
-            ),
-            const SizedBox(height: 14),
-            _buildField(
-              controller: _descriptionCtrl,
-              label: 'Business Description',
-              hint:
-                  'Describe your catering style, specialties, and what sets you apart...',
-              icon: Icons.notes_outlined,
-              maxLines: 4,
-              validator: (v) {
-                if (v == null || v.trim().isEmpty)
-                  return 'Description is required';
-                if (v.trim().length < 20)
-                  return 'Please write at least 20 characters';
-                return null;
-              },
-            ),
-            const SizedBox(height: 14),
-            _buildField(
-              controller: _contactCtrl,
-              label: 'Contact Number',
-              hint: 'e.g. 09XX XXX XXXX',
-              icon: Icons.phone_outlined,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(11),
-              ],
-              validator: (v) {
-                if (v == null || v.trim().isEmpty)
-                  return 'Contact number is required';
-                if (v.trim().length < 10) return 'Enter a valid phone number';
-                return null;
-              },
-            ),
-
-            const SizedBox(height: 20),
-            _sectionLabel('GUEST CAPACITY'),
-            const SizedBox(height: 10),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _buildField(
-                    controller: _minGuestsCtrl,
-                    label: 'Minimum Guests',
-                    hint: '30',
-                    icon: Icons.people_outline,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildField(
-                    controller: _maxGuestsCtrl,
-                    label: 'Maximum Guests',
-                    hint: '200',
-                    icon: Icons.people_outline,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-            _sectionLabel('EVENTS YOU CATER'),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _eventTypes
-                  .map(
-                    (e) => _buildSelectChip(
-                      label: e,
-                      selected: _selectedEvents.contains(e),
-                      onTap: () => setState(() {
-                        _selectedEvents.contains(e)
-                            ? _selectedEvents.remove(e)
-                            : _selectedEvents.add(e);
-                      }),
-                    ),
-                  )
-                  .toList(),
-            ),
+            const Divider(height: 1, color: _border),
           ],
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────
-  // STEP 1 — Cuisine & Location
-  // ─────────────────────────────────────────────────────────
-  Widget _buildStep1() {
-    return SingleChildScrollView(
-      key: const ValueKey(1),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Form(
-        key: _step1Key,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionLabel('CUISINE TYPE'),
-            const SizedBox(height: 4),
-            Text(
-              'Select all that apply',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 12),
-
-            // Cuisine grid — Shopee-style icon chips
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 0.85,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: _cuisineOptions.length,
-              itemBuilder: (_, i) {
-                final item = _cuisineOptions[i];
-                final selected = _selectedCuisines.contains(item['label']);
-                return GestureDetector(
-                  onTap: () => setState(() {
-                    selected
-                        ? _selectedCuisines.remove(item['label'])
-                        : _selectedCuisines.add(item['label']);
-                  }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    decoration: BoxDecoration(
-                      color: selected ? _primaryBg : _surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: selected ? _primary : _border,
-                        width: selected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          item['icon'],
-                          style: const TextStyle(fontSize: 22),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item['label'],
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            color: selected
-                                ? _primary
-                                : const Color(0xFF555555),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 24),
-            _sectionLabel('SERVICE LOCATION'),
-            const SizedBox(height: 10),
-
-            _buildField(
-              controller: _serviceAreaCtrl,
-              label: 'Service Area',
-              hint: 'e.g. Quezon City, Metro Manila',
-              icon: Icons.location_on_outlined,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Service area is required'
-                  : null,
-            ),
-
-            const SizedBox(height: 16),
-
-            // Coverage info card — Grab-style tip card
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8F5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFDDD0)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.info_outline, color: _primary, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'List the cities or areas you are willing to travel to for catering events. Be specific so customers can find you.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[700],
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // STEP 2 — Photos & Review
-  // ─────────────────────────────────────────────────────────
-  Widget _buildStep2() {
-    return SingleChildScrollView(
-      key: const ValueKey(2),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionLabel('FOOD PHOTOS'),
-          const SizedBox(height: 4),
-          Text(
-            'Add up to 6 photos to showcase your best dishes',
-            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-          ),
-          const SizedBox(height: 14),
-
-          // Photo grid — Foodpanda-style
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 1,
-            ),
-            itemCount: _photoFiles.length < 6 ? _photoFiles.length + 1 : 6,
-            itemBuilder: (_, i) {
-              if (i == _photoFiles.length) {
-                return GestureDetector(
-                  onTap: _pickPhoto,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: _surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _border),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(
-                          Icons.add_photo_alternate_outlined,
-                          color: _primary,
-                          size: 28,
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Add Photo',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: _primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(_photoFiles[i], fit: BoxFit.cover),
-                  ),
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: GestureDetector(
-                      onTap: () => _removePhoto(i),
-                      child: Container(
-                        width: 22,
-                        height: 22,
-                        decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (i == 0)
-                    Positioned(
-                      bottom: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _primary,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Cover',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-
-          const SizedBox(height: 24),
-          _sectionLabel('REVIEW YOUR PROFILE'),
-          const SizedBox(height: 12),
-
-          // Summary review card — Shopee-style summary
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _border),
-            ),
-            child: Column(
-              children: [
-                _reviewRow(
-                  Icons.storefront_outlined,
-                  'Business',
-                  _businessNameCtrl.text.trim().isEmpty
-                      ? '—'
-                      : _businessNameCtrl.text.trim(),
-                ),
-                const Divider(height: 16, color: _border),
-                _reviewRow(
-                  Icons.phone_outlined,
-                  'Contact',
-                  _contactCtrl.text.trim().isEmpty
-                      ? '—'
-                      : _contactCtrl.text.trim(),
-                ),
-                const Divider(height: 16, color: _border),
-                _reviewRow(
-                  Icons.location_on_outlined,
-                  'Location',
-                  _serviceAreaCtrl.text.trim().isEmpty
-                      ? '—'
-                      : _serviceAreaCtrl.text.trim(),
-                ),
-                const Divider(height: 16, color: _border),
-                _reviewRow(
-                  Icons.restaurant_outlined,
-                  'Cuisines',
-                  _selectedCuisines.isEmpty
-                      ? '—'
-                      : _selectedCuisines.take(3).join(', ') +
-                            (_selectedCuisines.length > 3
-                                ? ' +${_selectedCuisines.length - 3}'
-                                : ''),
-                ),
-                const Divider(height: 16, color: _border),
-                _reviewRow(
-                  Icons.people_outline,
-                  'Capacity',
-                  '${_minGuestsCtrl.text}–${_maxGuestsCtrl.text} guests',
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Terms note
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.verified_outlined, color: _primary, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'By submitting, you agree to CelebrEats\' Caterer Terms of Service and confirm that all information provided is accurate.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                    height: 1.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _reviewRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: _primary),
-        const SizedBox(width: 10),
-        Text(
-          '$label:',
-          style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF222222),
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Bottom action bar ─────────────────────────────────────
-  Widget _buildBottomBar() {
-    final isLast = _currentStep == _totalSteps - 1;
+  // ── Subtitle ──────────────────────────────────────────────
+  Widget _subtitleBanner() {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        MediaQuery.of(context).padding.bottom + 12,
-      ),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: const Border(top: BorderSide(color: _border)),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
-            offset: const Offset(0, -2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: const Text(
+        'Register your catering business to start receiving bookings.',
+        style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
+      ),
+    );
+  }
+
+  // ─── Card 1: Business Information ────────────────────────
+  Widget _buildBusinessInfoCard() {
+    return _sectionCard(
+      title: 'Business Information',
+      child: Column(
         children: [
-          if (_currentStep > 0) ...[
-            Expanded(
-              flex: 1,
-              child: OutlinedButton(
-                onPressed: _prevStep,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: _border, width: 1.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Back',
-                  style: TextStyle(
-                    color: Color(0xFF555555),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            flex: 3,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [_primary, _primaryLight],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ElevatedButton(
-                onPressed: _isLoading
-                    ? null
-                    : (isLast ? _handleSubmit : _nextStep),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            isLast ? 'Submit Registration' : 'Continue',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (!isLast) ...[
-                            const SizedBox(width: 6),
-                            const Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ],
-                        ],
-                      ),
-              ),
-            ),
+          _iconField(
+            icon: Icons.storefront_outlined,
+            hint: 'Business Name',
+            controller: _businessNameCtrl,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Business name is required'
+                : null,
+          ),
+          const SizedBox(height: 10),
+          _iconField(
+            icon: Icons.person_outline,
+            hint: 'Owner Name',
+            controller: _ownerNameCtrl,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Owner name is required'
+                : null,
+          ),
+          const SizedBox(height: 10),
+          _iconField(
+            icon: Icons.phone_outlined,
+            hint: 'Contact Number',
+            controller: _contactCtrl,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+            validator: (v) => (v == null || v.trim().length < 10)
+                ? 'Enter a valid contact number'
+                : null,
+          ),
+          const SizedBox(height: 10),
+          _iconField(
+            icon: Icons.email_outlined,
+            hint: 'Email Address',
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Email is required';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
           ),
         ],
       ),
     );
   }
 
-  // ── Shared widgets ────────────────────────────────────────
-  Widget _sectionLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFFAAAAAA),
-        letterSpacing: 0.8,
+  // ─── Card 2: Location ─────────────────────────────────────
+  Widget _buildLocationCard() {
+    return _sectionCard(
+      title: 'Location',
+      child: Column(
+        children: [
+          _iconField(
+            icon: Icons.location_on_outlined,
+            hint: 'Address',
+            helperText: 'Enter your complete address',
+            controller: _locationCtrl,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Address is required' : null,
+          ),
+          const SizedBox(height: 10),
+          _iconField(
+            icon: Icons.map_outlined,
+            hint: 'Service Area',
+            helperText: 'Coverage area (e.g. Quezon City, Metro Manila)',
+            controller: _serviceAreaCtrl,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Service area is required'
+                : null,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
+  // ─── Card 3: Requirements ────────────────────────────────
+  Widget _buildRequirementsCard() {
+    return _sectionCard(
+      title: 'Requirements',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _uploadRow(
+            icon: Icons.verified_user_outlined,
+            label: 'Upload Business Permit',
+            buttonLabel: 'Upload Permit',
+            file: _businessPermitFile,
+            onTap: () => _pickSingleFile('permit'),
+          ),
+          const SizedBox(height: 10),
+          _uploadRow(
+            icon: Icons.badge_outlined,
+            label: 'Upload Valid ID',
+            buttonLabel: 'Upload ID',
+            file: _validIdFile,
+            onTap: () => _pickSingleFile('id'),
+          ),
+          const SizedBox(height: 10),
+          _uploadRow(
+            icon: Icons.photo_library_outlined,
+            label: 'Upload Sample Menu / Photos',
+            buttonLabel: 'Upload Files',
+            file: _menuPhotoFiles.isNotEmpty ? _menuPhotoFiles.first : null,
+            fileCount: _menuPhotoFiles.length,
+            onTap: _pickMenuPhoto,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Icon(Icons.info_outline, size: 13, color: _textLight),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Max 4 menu photos. Images are compressed automatically.',
+                  style: TextStyle(fontSize: 11, color: _textMid),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Bottom bar ────────────────────────────────────────────
+  Widget _buildBottomBar() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        MediaQuery.of(context).padding.bottom + 12,
+      ),
+      color: Colors.white,
+      child: SizedBox(
+        width: double.infinity,
+        height: 54,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [_primary, _primaryLight]),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSubmit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Submit',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // SHARED WIDGETS
+  // ─────────────────────────────────────────────────────────
+  Widget _sectionCard({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: _textDark,
+            ),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _iconField({
     required IconData icon,
-    int maxLines = 1,
+    required String hint,
+    required TextEditingController controller,
+    String? helperText,
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      validator: validator,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      style: const TextStyle(fontSize: 14, color: Color(0xFF222222)),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        hintStyle: TextStyle(fontSize: 13, color: Colors.grey[400]),
-        labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF888888)),
-        prefixIcon: Icon(icon, color: _primary, size: 20),
-        filled: true,
-        fillColor: _surface,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 50,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFF3ED),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(9),
+                    bottomLeft: Radius.circular(9),
+                  ),
+                ),
+                child: Icon(icon, color: _primary, size: 20),
+              ),
+              Expanded(
+                child: TextFormField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  inputFormatters: inputFormatters,
+                  validator: validator,
+                  style: const TextStyle(fontSize: 14, color: _textDark),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: const TextStyle(fontSize: 14, color: _textLight),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 15,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _primary, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red, width: 1.5),
-        ),
-      ),
+        if (helperText != null) ...[
+          const SizedBox(height: 5),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              helperText,
+              style: const TextStyle(fontSize: 11, color: _textMid),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-  Widget _buildSelectChip({
+  Widget _uploadRow({
+    required IconData icon,
     required String label,
-    required bool selected,
+    required String buttonLabel,
+    required File? file,
     required VoidCallback onTap,
+    int fileCount = 0,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? _primaryBg : _surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? _primary : _border,
-            width: selected ? 1.5 : 1,
+    final uploaded = file != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3ED),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: _primary, size: 18),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-            color: selected ? _primary : const Color(0xFF555555),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _textDark,
+                  ),
+                ),
+                if (uploaded)
+                  Text(
+                    fileCount > 1
+                        ? '$fileCount files selected'
+                        : '1 file selected ✓',
+                    style: const TextStyle(fontSize: 11, color: _primary),
+                  ),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: uploaded ? _primary : Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _primary, width: 1.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.upload_outlined,
+                    color: uploaded ? Colors.white : _primary,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    uploaded ? 'Change' : buttonLabel,
+                    style: TextStyle(
+                      color: uploaded ? Colors.white : _primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1193,16 +757,14 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage>
 
 // ─────────────────────────────────────────────────────────────
 // SUCCESS PAGE
-// Returns true to ProfilePage to activate catererMode toggle
 // ─────────────────────────────────────────────────────────────
-
 class CatererSuccessPage extends StatelessWidget {
   final String businessName;
   const CatererSuccessPage({super.key, required this.businessName});
 
   static const Color _primary = Color(0xFFFF6B22);
-  static const Color _primaryLight = Color(0xFFFF8C5A);
-  static const Color _primaryBg = Color(0x1AFF6B22);
+  static const Color _primaryLight = Color(0xFFFF9B55);
+  static const Color _primaryBg = Color(0xFFFFF3ED);
 
   @override
   Widget build(BuildContext context) {
@@ -1210,9 +772,7 @@ class CatererSuccessPage extends StatelessWidget {
       backgroundColor: Colors.white,
       body: Column(
         children: [
-          // Orange band
           Container(
-            height: MediaQuery.of(context).padding.top + 80,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 colors: [_primary, _primaryLight],
@@ -1220,23 +780,22 @@ class CatererSuccessPage extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
             ),
+            height: MediaQuery.of(context).padding.top + 80,
             alignment: Alignment.topCenter,
             child: SafeArea(
               child: const Padding(
-                padding: EdgeInsets.only(top: 12),
+                padding: EdgeInsets.only(top: 16),
                 child: Text(
                   'CelebrEats',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ),
           ),
-
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -1250,7 +809,7 @@ class CatererSuccessPage extends StatelessWidget {
                     border: Border.all(color: const Color(0xFFEEEEEE)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withOpacity(0.06),
                         blurRadius: 20,
                         offset: const Offset(0, 4),
                       ),
@@ -1258,7 +817,6 @@ class CatererSuccessPage extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      // Animated check
                       Container(
                         width: 80,
                         height: 80,
@@ -1293,8 +851,6 @@ class CatererSuccessPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 20),
-
-                      // Business badge
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
@@ -1332,8 +888,6 @@ class CatererSuccessPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // Next steps
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -1352,8 +906,6 @@ class CatererSuccessPage extends StatelessWidget {
                       const SizedBox(height: 10),
                       _step('3', 'Start accepting bookings!'),
                       const SizedBox(height: 28),
-
-                      // CTA — pops all the way back to ProfilePage with result = true
                       SizedBox(
                         width: double.infinity,
                         height: 52,
@@ -1365,12 +917,17 @@ class CatererSuccessPage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: ElevatedButton(
-                            onPressed: () {
-                              // Pop back to ProfilePage and signal success = true
-                              Navigator.of(
-                                context,
-                              ).popUntil((route) => route.isFirst);
-                            },
+                            // ── FIXED: Navigate to CatererDashboardPage
+                            // and clear the entire back stack so the user
+                            // cannot go back to the registration form.
+                            onPressed: () =>
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const CatererDashboardPage(),
+                                  ),
+                                  (route) => false,
+                                ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
@@ -1395,7 +952,6 @@ class CatererSuccessPage extends StatelessWidget {
               ),
             ),
           ),
-
           Padding(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).padding.bottom + 16,
