@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'favorite.dart';
 import 'caterer_registration_page.dart';
 import 'caterer_dashboard.dart';
+import 'sign_up.dart'; // ← import your SignUpScreen
 
 // ─────────────────────────────────────────────────────────────
 // AUTH DIALOG
@@ -78,7 +79,11 @@ class _LoginRequiredSheet extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    Navigator.pushNamed(context, '/register');
+                    // ✅ Navigate directly to SignUpScreen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                    );
                   },
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -505,10 +510,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
 
             // ── Caterer Mode tile ─────────────────────────────
-            // The whole tile is tappable via onTap on the ListTile.
-            // The Switch inside is wrapped in IgnorePointer so it
-            // is purely visual — tapping it won't try to toggle OFF
-            // when isCaterer is already true.
             _CatererModeTile(
               isCaterer: isCaterer,
               onTap: () => _handleCatererModeTap(isCaterer),
@@ -719,12 +720,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
 // ─────────────────────────────────────────────────────────────
 // CATERER MODE TILE
-//
-// The entire ListTile is tappable via onTap.
-// The Switch is wrapped in IgnorePointer so it is visual-only
-// and never intercepts taps — this fixes the bug where tapping
-// an already-ON switch would fire "turn OFF" instead of opening
-// the dashboard.
 // ─────────────────────────────────────────────────────────────
 class _CatererModeTile extends StatelessWidget {
   final bool isCaterer;

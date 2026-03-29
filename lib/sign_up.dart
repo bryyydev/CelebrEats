@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'caterer_registration_page.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -17,6 +18,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _acceptTerms = false;
+  bool _isCaterer = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -31,6 +33,129 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // ── Show Become a Caterer confirmation dialog ─────────────────────────────
+  void _showBecomeCatererDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF8A00), Color(0xFFFF3D3D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.restaurant_menu,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Become a Caterer',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Register your catering business to start receiving bookings. Would you like to proceed?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        // User cancelled — uncheck the caterer box
+                        Navigator.pop(ctx);
+                        setState(() => _isCaterer = false);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: const BorderSide(color: Colors.grey),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        // Keep _isCaterer = true and go to registration page
+                        Navigator.pop(ctx);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CatererRegistrationPage(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: const Color(0xFFFF6B22),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Yes, Proceed',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Handle caterer card / checkbox tap ────────────────────────────────────
+  // When checked → show the confirmation dialog.
+  // When unchecked → just uncheck silently.
+  void _handleCatererTap(bool newValue) {
+    setState(() => _isCaterer = newValue);
+    if (newValue) {
+      _showBecomeCatererDialog();
+    }
   }
 
   String? _validateUsername(String? value) {
@@ -83,12 +208,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'uid': cred.user!.uid,
         'name': _usernameController.text.trim(),
         'email': _emailController.text.trim(),
-        'is_caterer': false,
+        'is_caterer': _isCaterer,
         'photo': '',
         'created_at': FieldValue.serverTimestamp(),
       });
 
-      // ✅ Sign out so user must log in manually
       await _auth.signOut();
 
       if (mounted) {
@@ -100,11 +224,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         );
 
-        // ✅ Check if we came from the booking flow
         final args = ModalRoute.of(context)?.settings.arguments;
         final fromBooking = args is Map && args['returnToBooking'] == true;
 
-        // ✅ Pass the argument forward to login ONLY if from booking
         Navigator.pushNamed(
           context,
           '/login',
@@ -132,64 +254,181 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  // ── Shared input decoration ──────────────────────────────────────────────
+  InputDecoration _inputDecoration({required String label, Widget? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.black45, fontSize: 14),
+      floatingLabelBehavior: FloatingLabelBehavior.never,
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: const Color(0xFFF2EAE0),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Color(0xFFE8A87C), width: 1.2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Color(0xFFFA4A2A), width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Colors.red, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Colors.red, width: 1.5),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(30),
+        borderSide: const BorderSide(color: Color(0xFFE8A87C), width: 1.2),
+      ),
+      errorStyle: const TextStyle(fontSize: 11),
+    );
+  }
+
+  Widget _visibilityIcon(bool obscure, VoidCallback onTap) {
+    return IconButton(
+      icon: Icon(
+        obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+        color: Colors.black45,
+        size: 20,
+      ),
+      onPressed: onTap,
+    );
+  }
+
+  Widget _fieldLabel(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFDF3),
+      backgroundColor: const Color(0xFFFAF4EC),
       body: SafeArea(
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 30),
+            padding: const EdgeInsets.symmetric(horizontal: 26),
             child: Form(
               key: _formKey,
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 36),
+
+                  // ── Logo ─────────────────────────────────────────────────
                   Image.asset(
                     'assets/logo.png',
-                    height: 180,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.restaurant,
-                      size: 100,
-                      color: Colors.deepOrange,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Create your account",
-                      style: TextStyle(
-                        color: Color(0xFFE65C2A),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                    height: 140,
+                    errorBuilder: (_, __, ___) => SizedBox(
+                      height: 140,
+                      width: 120,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ClipPath(
+                            clipper: _FlameClipper(),
+                            child: Container(
+                              width: 110,
+                              height: 140,
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(0xFFFA4A2A),
+                                    Color(0xFFFFA726),
+                                  ],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.restaurant,
+                            size: 60,
+                            color: Colors.white,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+
+                  const SizedBox(height: 18),
+
+                  // ── Title ─────────────────────────────────────────────────
+                  const Text(
+                    "Create Account",
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    "Join CelebrEats today",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black45,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // ── Username ──────────────────────────────────────────────
+                  _fieldLabel("Username"),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _usernameController,
                     enabled: !_isLoading,
                     validator: _validateUsername,
-                    decoration: _input("Username"),
+                    style: const TextStyle(fontSize: 14),
+                    decoration: _inputDecoration(label: "Username"),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // ── Email ─────────────────────────────────────────────────
+                  _fieldLabel("Email"),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _emailController,
                     enabled: !_isLoading,
                     validator: _validateEmail,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: _input("Email"),
+                    style: const TextStyle(fontSize: 14),
+                    decoration: _inputDecoration(label: "Email"),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // ── Password ──────────────────────────────────────────────
+                  _fieldLabel("Password"),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _passwordController,
                     enabled: !_isLoading,
                     validator: _validatePassword,
                     obscureText: _obscurePassword,
-                    decoration: _input("Password").copyWith(
-                      suffixIcon: _toggleIcon(
+                    style: const TextStyle(fontSize: 14),
+                    decoration: _inputDecoration(
+                      label: "Password",
+                      suffix: _visibilityIcon(
                         _obscurePassword,
                         () => setState(
                           () => _obscurePassword = !_obscurePassword,
@@ -197,14 +436,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // ── Confirm Password ──────────────────────────────────────
+                  _fieldLabel("Confirm Password"),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _confirmPasswordController,
                     enabled: !_isLoading,
                     validator: _validateConfirmPassword,
                     obscureText: _obscureConfirmPassword,
-                    decoration: _input("Confirm password").copyWith(
-                      suffixIcon: _toggleIcon(
+                    style: const TextStyle(fontSize: 14),
+                    decoration: _inputDecoration(
+                      label: "Confirm Password",
+                      suffix: _visibilityIcon(
                         _obscureConfirmPassword,
                         () => setState(
                           () => _obscureConfirmPassword =
@@ -213,156 +459,210 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _acceptTerms,
-                        onChanged: _isLoading
-                            ? null
-                            : (v) => setState(() => _acceptTerms = v ?? false),
-                        activeColor: const Color(0xFFFF6347),
-                      ),
-                      const Text(
-                        "I accept Privacy & Term of Use",
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
+
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
+
+                  // ── Caterer card ──────────────────────────────────────────
+                  // Tapping the card or checkbox triggers _handleCatererTap:
+                  //   checked  → shows "Become a Caterer" dialog
+                  //             → Yes: navigates to CatererRegistrationPage
+                  //             → Cancel: unchecks the box
+                  //   unchecked → simply unchecks silently
+                  GestureDetector(
+                    onTap: _isLoading
+                        ? null
+                        : () => _handleCatererTap(!_isCaterer),
                     child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: _isLoading
-                              ? [Colors.grey, Colors.grey]
-                              : [
-                                  const Color(0xFFFFA726),
-                                  const Color(0xFFFA4A2A),
-                                ],
-                        ),
-                        borderRadius: BorderRadius.circular(30),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleSignUp,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2EAE0),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _isCaterer
+                              ? const Color(0xFFFA4A2A)
+                              : const Color(0xFFE8A87C),
+                          width: 1.2,
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text(
-                                "Sign up",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: Checkbox(
+                              value: _isCaterer,
+                              onChanged: _isLoading
+                                  ? null
+                                  : (val) => _handleCatererTap(val ?? false),
+                              activeColor: const Color(0xFFFA4A2A),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
                               ),
+                              side: const BorderSide(
+                                color: Color(0xFFFA4A2A),
+                                width: 1.5,
+                              ),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "I offer catering services / Register as a Caterer",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  "Check this if you want to manage your catering services on this app.",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black45,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Row(
-                    children: [
-                      Expanded(child: Divider(thickness: 1)),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          "OR",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Expanded(child: Divider(thickness: 1)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+
+                  const SizedBox(height: 12),
+
+                  // ── Accept Terms ──────────────────────────────────────────
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: const Color(0xFFF3E3CE),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            side: const BorderSide(color: Colors.black12),
+                      SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: Checkbox(
+                          value: _acceptTerms,
+                          onChanged: _isLoading
+                              ? null
+                              : (v) =>
+                                    setState(() => _acceptTerms = v ?? false),
+                          activeColor: const Color(0xFFFA4A2A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          onPressed: _isLoading ? null : () {},
-                          icon: Image.asset(
-                            'assets/facebook.png',
-                            width: 22,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.facebook, color: Colors.blue),
+                          side: const BorderSide(
+                            color: Color(0xFFFA4A2A),
+                            width: 1.5,
                           ),
-                          label: const Text(
-                            "Facebook",
-                            style: TextStyle(color: Colors.black87),
-                          ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: const Color(0xFFF3E3CE),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            side: const BorderSide(color: Colors.black12),
-                          ),
-                          onPressed: _isLoading ? null : () {},
-                          icon: Image.asset(
-                            'assets/google.png',
-                            width: 22,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.g_mobiledata,
-                              color: Colors.red,
-                            ),
-                          ),
-                          label: const Text(
-                            "Google",
-                            style: TextStyle(color: Colors.black87),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("Already have an account? "),
+                      const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: _isLoading ? null : () => Navigator.pop(context),
+                        onTap: () {
+                          // TODO: open terms screen
+                        },
+                        child: RichText(
+                          text: const TextSpan(
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.black54,
+                              fontFamily: 'Poppins',
+                            ),
+                            children: [
+                              TextSpan(text: "I accept "),
+                              TextSpan(
+                                text: "Privacy & Terms of Use",
+                                style: TextStyle(
+                                  color: Color(0xFFFA4A2A),
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Sign Up button ────────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleSignUp,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFA5C1A),
+                        disabledBackgroundColor: Colors.grey.shade400,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text(
+                              "Sign Up",
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Already have account ──────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "Already have an account? ",
+                        style: TextStyle(color: Colors.black54, fontSize: 14),
+                      ),
+                      GestureDetector(
+                        // ✅ FIXED: pushNamed instead of pop() — always
+                        // navigates to login regardless of back stack
+                        onTap: _isLoading
+                            ? null
+                            : () => Navigator.pushNamed(context, '/login'),
                         child: Text(
                           "Log In",
                           style: TextStyle(
                             color: _isLoading
                                 ? Colors.grey
-                                : const Color(0xFFE65C2A),
+                                : const Color(0xFFFA4A2A),
                             fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 30),
+
+                  const SizedBox(height: 36),
                 ],
               ),
             ),
@@ -371,28 +671,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
+}
 
-  InputDecoration _input(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: const Color(0xFFF5E6D3),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(25),
-        borderSide: BorderSide.none,
-      ),
-      hintStyle: TextStyle(color: Colors.brown.shade300),
+// Flame/teardrop shape clipper for the fallback logo
+class _FlameClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    final w = size.width;
+    final h = size.height;
+    path.moveTo(w * 0.5, 0);
+    path.cubicTo(w * 0.85, h * 0.2, w, h * 0.45, w, h * 0.65);
+    path.arcToPoint(
+      Offset(0, h * 0.65),
+      radius: Radius.circular(w * 0.5),
+      clockwise: false,
     );
+    path.cubicTo(0, h * 0.45, w * 0.15, h * 0.2, w * 0.5, 0);
+    path.close();
+    return path;
   }
 
-  IconButton _toggleIcon(bool state, VoidCallback onTap) {
-    return IconButton(
-      icon: Icon(
-        state ? Icons.visibility_off : Icons.visibility,
-        color: const Color(0xFFFF6347),
-      ),
-      onPressed: onTap,
-    );
-  }
+  @override
+  bool shouldReclip(_FlameClipper oldClipper) => false;
 }
