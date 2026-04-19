@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -24,7 +23,6 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 6),
     );
 
-    // Move logo from top center to center (first 20% = 1.2 seconds)
     _alignmentAnimation =
         AlignmentTween(
           begin: const Alignment(0.0, -1.0),
@@ -36,7 +34,6 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         );
 
-    // Logo expands (from 3s to 5s)
     _scaleAnimation = Tween<double>(begin: 1.0, end: 15.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -44,7 +41,6 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Gradient fades in right after logo expansion (from 5s to 6s)
     _gradientFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -54,11 +50,9 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // ✅ Always go to /home after splash — no login check
-    // Login is only required when user tries to book a package
-    Timer(const Duration(seconds: 6), () {
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    });
+    // ✅ NO Timer, NO Navigator here.
+    // AppRoot flips _showSplash = false after 6 seconds, which swaps
+    // the widget tree. The splash just plays its animation and sits still.
   }
 
   @override
@@ -75,10 +69,8 @@ class _SplashScreenState extends State<SplashScreen>
         builder: (context, _) {
           return Stack(
             children: [
-              // White background before gradient appears
               Container(color: Colors.white),
 
-              // Gradient background (fades in after expansion)
               Opacity(
                 opacity: _gradientFadeAnimation.value,
                 child: Container(
@@ -92,7 +84,6 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // Animated logo
               AlignTransition(
                 alignment: _alignmentAnimation,
                 child: ScaleTransition(

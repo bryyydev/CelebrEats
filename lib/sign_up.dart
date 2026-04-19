@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'caterer_registration_page.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -18,7 +17,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _acceptTerms = false;
-  bool _isCaterer = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -33,129 +31,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  // ── Show Become a Caterer confirmation dialog ─────────────────────────────
-  void _showBecomeCatererDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A00), Color(0xFFFF3D3D)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.restaurant_menu,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Become a Caterer',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Register your catering business to start receiving bookings. Would you like to proceed?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.black54,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // User cancelled — uncheck the caterer box
-                        Navigator.pop(ctx);
-                        setState(() => _isCaterer = false);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: const BorderSide(color: Colors.grey),
-                      ),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // Keep _isCaterer = true and go to registration page
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CatererRegistrationPage(),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: const Color(0xFFFF6B22),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Yes, Proceed',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Handle caterer card / checkbox tap ────────────────────────────────────
-  // When checked → show the confirmation dialog.
-  // When unchecked → just uncheck silently.
-  void _handleCatererTap(bool newValue) {
-    setState(() => _isCaterer = newValue);
-    if (newValue) {
-      _showBecomeCatererDialog();
-    }
   }
 
   String? _validateUsername(String? value) {
@@ -208,7 +83,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'uid': cred.user!.uid,
         'name': _usernameController.text.trim(),
         'email': _emailController.text.trim(),
-        'is_caterer': _isCaterer,
         'photo': '',
         'created_at': FieldValue.serverTimestamp(),
       });
@@ -460,87 +334,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 16),
-
-                  // ── Caterer card ──────────────────────────────────────────
-                  // Tapping the card or checkbox triggers _handleCatererTap:
-                  //   checked  → shows "Become a Caterer" dialog
-                  //             → Yes: navigates to CatererRegistrationPage
-                  //             → Cancel: unchecks the box
-                  //   unchecked → simply unchecks silently
-                  GestureDetector(
-                    onTap: _isLoading
-                        ? null
-                        : () => _handleCatererTap(!_isCaterer),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF2EAE0),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _isCaterer
-                              ? const Color(0xFFFA4A2A)
-                              : const Color(0xFFE8A87C),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: Checkbox(
-                              value: _isCaterer,
-                              onChanged: _isLoading
-                                  ? null
-                                  : (val) => _handleCatererTap(val ?? false),
-                              activeColor: const Color(0xFFFA4A2A),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              side: const BorderSide(
-                                color: Color(0xFFFA4A2A),
-                                width: 1.5,
-                              ),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "I offer catering services / Register as a Caterer",
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  "Check this if you want to manage your catering services on this app.",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black45,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
                   const SizedBox(height: 12),
 
                   // ── Accept Terms ──────────────────────────────────────────
@@ -643,8 +436,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         style: TextStyle(color: Colors.black54, fontSize: 14),
                       ),
                       GestureDetector(
-                        // ✅ FIXED: pushNamed instead of pop() — always
-                        // navigates to login regardless of back stack
                         onTap: _isLoading
                             ? null
                             : () => Navigator.pushNamed(context, '/login'),

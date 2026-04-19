@@ -1,7 +1,6 @@
 name: celebreats
 description: "A new Flutter project."
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -10,17 +9,30 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.3
   flutter_svg: ^2.0.10
   provider: ^6.0.5
   intl: ^0.18.0
   google_fonts: ^6.1.0
+
+  # Firebase
   firebase_core: ^3.15.2
   cloud_firestore: ^5.6.12
   firebase_auth: ^5.3.1
   google_sign_in: ^6.2.1
+  firebase_storage: ^12.3.7
+
+  # Media
   image_picker: ^1.1.2
+
+  # Maps & Location (UPDATED FOR OPENSTREETMAP)
+  flutter_map: ^8.2.0
+  latlong2: ^0.9.1
+  geolocator: ^11.0.0
+  geocoding: ^3.0.0
+  connectivity_plus: ^7.1.1
 
 dev_dependencies:
   flutter_test:
@@ -29,14 +41,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
   assets:
-    # Logos & auth
     - assets/logo.png
     - assets/facebook.png
     - assets/google.png
-
-    # Event images
     - assets/birthday.png
     - assets/baptism.png
     - assets/reunion.png
@@ -52,8 +60,6 @@ flutter:
     - assets/javier_fam.png
     - assets/image_26.png
     - assets/manang_anna.png
-
-    # SVG icons
     - assets/icons/changepassword_ic.svg
     - assets/icons/favorites_ic.svg
     - assets/icons/help_support_ic.svg

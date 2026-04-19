@@ -1,40 +1,15 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:celebreats/caterer_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'caterer_dashboard.dart'; // ← adjust path if needed
-
-// ─────────────────────────────────────────────────────────────
-// CATERER REGISTRATION PAGE
-//
-// Writes to Firestore (matching your schema):
-//
-//  users/{uid}
-//    └─ is_caterer: true
-//
-//  caterers/{uid}
-//    ├─ caterer_id       (string)
-//    ├─ user_id          (string)
-//    ├─ name             (string)  ← business name
-//    ├─ owner_name       (string)
-//    ├─ contact          (string)
-//    ├─ email            (string)
-//    ├─ location         (string)  ← address
-//    ├─ service_area     (string)
-//    ├─ business_permit  (string)  ← base64
-//    ├─ valid_id         (string)  ← base64
-//    ├─ menu_photos      (array)   ← base64 strings
-//    ├─ rating           0.0
-//    ├─ review_count     0
-//    ├─ is_verified      false
-//    ├─ is_active        true
-//    ├─ created_at       (timestamp)
-//    └─ updated_at       (timestamp)
-// ─────────────────────────────────────────────────────────────
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'caterer_dashboard.dart';
 
 class CatererRegistrationPage extends StatefulWidget {
   const CatererRegistrationPage({super.key});
@@ -45,10 +20,8 @@ class CatererRegistrationPage extends StatefulWidget {
 }
 
 class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
-  // ── Form ──────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
 
-  // ── Controllers ───────────────────────────────────────────
   final _businessNameCtrl = TextEditingController();
   final _ownerNameCtrl = TextEditingController();
   final _contactCtrl = TextEditingController();
@@ -56,24 +29,40 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
   final _locationCtrl = TextEditingController();
   final _serviceAreaCtrl = TextEditingController();
 
-  // ── Files (base64 — Spark plan compatible) ─────────────────
   File? _businessPermitFile;
   File? _validIdFile;
   final List<File> _menuPhotoFiles = [];
   final ImagePicker _picker = ImagePicker();
 
-  // ── Submit state ──────────────────────────────────────────
   bool _isLoading = false;
   String _uploadStatus = '';
 
-  // ── Colors ────────────────────────────────────────────────
+  // Event type tags
+  static const List<String> _allEventTypes = [
+    'Birthday',
+    'Wedding',
+    'Baptism',
+    'Reunion',
+    'Corporate',
+    'Anniversary',
+    'Graduation',
+    'Christmas Party',
+  ];
+  final Set<String> _selectedEventTypes = {};
+
+  // Map state
+  LatLng? _pickedLatLng;
+  final MapController _mapController = MapController();
+  bool _mapLoading = false;
+
   static const Color _primary = Color(0xFFFF6B22);
   static const Color _primaryLight = Color(0xFFFFAA55);
   static const Color _primaryBg = Color(0xFFFFF3ED);
-  static const Color _border = Color(0xFFE5E5E5);
+  static const Color _border = Color(0xFFEEEEEE);
   static const Color _textDark = Color(0xFF1A1A1A);
   static const Color _textMid = Color(0xFF777777);
   static const Color _textLight = Color(0xFFAAAAAA);
+  static const Color _bgPage = Color(0xFFF5F5F5);
 
   @override
   void dispose() {
@@ -83,12 +72,10 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     _emailCtrl.dispose();
     _locationCtrl.dispose();
     _serviceAreaCtrl.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -100,19 +87,18 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  /// File → base64 data URI (same format as users.photo)
-  Future<String> _toBase64(File file) async {
+  // ── Convert file to Base64 string ─────────────────────────
+  Future<String> _fileToBase64(File file) async {
     final bytes = await file.readAsBytes();
-    return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+    // Firestore doc limit is 1MB — we compress heavily to stay safe
+    return base64Encode(bytes);
   }
 
-  // ─────────────────────────────────────────────────────────
-  // FILE PICKERS
-  // ─────────────────────────────────────────────────────────
   Future<void> _pickSingleFile(String type) async {
     final XFile? img = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 60,
+      imageQuality: 40, // compress more since storing in Firestore
+      maxWidth: 600, // smaller size to stay under Firestore 1MB limit
     );
     if (img == null) return;
     setState(() {
@@ -122,22 +108,94 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
   }
 
   Future<void> _pickMenuPhoto() async {
-    if (_menuPhotoFiles.length >= 4) {
-      _showSnack('Maximum 4 photos allowed');
+    if (_menuPhotoFiles.length >= 3) {
+      _showSnack('Maximum 3 photos allowed');
       return;
     }
     final XFile? img = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 50,
+      imageQuality: 40,
+      maxWidth: 600,
     );
     if (img != null) setState(() => _menuPhotoFiles.add(File(img.path)));
   }
 
-  // ─────────────────────────────────────────────────────────
-  // SUBMIT
-  // ─────────────────────────────────────────────────────────
+  // ── Map helpers ───────────────────────────────────────────
+
+  Future<void> _goToMyLocation() async {
+    setState(() => _mapLoading = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnack('Location services are disabled.');
+        setState(() => _mapLoading = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showSnack('Location permission denied.');
+          setState(() => _mapLoading = false);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        _showSnack('Location permission permanently denied.');
+        setState(() => _mapLoading = false);
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final latLng = LatLng(pos.latitude, pos.longitude);
+      _mapController.move(latLng, 16);
+      await _onMapTap(latLng);
+    } catch (e) {
+      _showSnack('Could not get location: $e');
+    }
+    setState(() => _mapLoading = false);
+  }
+
+  Future<void> _onMapTap(LatLng pos) async {
+    setState(() => _pickedLatLng = pos);
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        pos.latitude,
+        pos.longitude,
+      );
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final address = [
+          p.street,
+          p.subLocality,
+          p.locality,
+          p.administrativeArea,
+        ].where((s) => s != null && s.isNotEmpty).join(', ');
+        final area = [
+          p.locality,
+          p.administrativeArea,
+        ].where((s) => s != null && s.isNotEmpty).join(', ');
+        setState(() {
+          _locationCtrl.text = address;
+          if (_serviceAreaCtrl.text.isEmpty) _serviceAreaCtrl.text = area;
+        });
+      }
+    } catch (_) {}
+  }
+
+  // ── Submit ────────────────────────────────────────────────
+
   Future<void> _handleSubmit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    if (_selectedEventTypes.isEmpty) {
+      _showSnack('Please select at least one event type');
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _uploadStatus = 'Preparing data…';
@@ -147,37 +205,38 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) throw Exception('User not logged in.');
 
-      // Convert files → base64
+      // Convert images to Base64
       String? permitBase64;
+      String? idBase64;
+      final List<String> menuBase64List = [];
+
       if (_businessPermitFile != null) {
         setState(() => _uploadStatus = 'Processing business permit…');
-        permitBase64 = await _toBase64(_businessPermitFile!);
+        permitBase64 = await _fileToBase64(_businessPermitFile!);
       }
 
-      String? idBase64;
       if (_validIdFile != null) {
         setState(() => _uploadStatus = 'Processing valid ID…');
-        idBase64 = await _toBase64(_validIdFile!);
+        idBase64 = await _fileToBase64(_validIdFile!);
       }
 
-      final List<String> menuBase64 = [];
       for (int i = 0; i < _menuPhotoFiles.length; i++) {
         setState(
           () => _uploadStatus =
               'Processing photo ${i + 1} of ${_menuPhotoFiles.length}…',
         );
-        menuBase64.add(await _toBase64(_menuPhotoFiles[i]));
+        final b64 = await _fileToBase64(_menuPhotoFiles[i]);
+        menuBase64List.add(b64);
       }
 
-      // 1. users/{uid} → is_caterer: true
       setState(() => _uploadStatus = 'Updating user profile…');
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'is_caterer': true,
       });
 
-      // 2. caterers/{uid} → full document
       setState(() => _uploadStatus = 'Saving caterer profile…');
-      await FirebaseFirestore.instance.collection('caterers').doc(uid).set({
+
+      final Map<String, dynamic> catererData = {
         'caterer_id': uid,
         'user_id': uid,
         'name': _businessNameCtrl.text.trim(),
@@ -186,16 +245,30 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
         'email': _emailCtrl.text.trim(),
         'location': _locationCtrl.text.trim(),
         'service_area': _serviceAreaCtrl.text.trim(),
-        if (permitBase64 != null) 'business_permit': permitBase64,
-        if (idBase64 != null) 'valid_id': idBase64,
-        'menu_photos': menuBase64,
+        'event_types': _selectedEventTypes.toList(),
+        'menu_photos': menuBase64List, // Base64 strings
+        'cover_photo': menuBase64List.isNotEmpty
+            ? menuBase64List.first
+            : null, // First photo = card cover
         'rating': 0.0,
         'review_count': 0,
         'is_verified': false,
         'is_active': true,
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+
+      if (_pickedLatLng != null) {
+        catererData['latitude'] = _pickedLatLng!.latitude;
+        catererData['longitude'] = _pickedLatLng!.longitude;
+      }
+      if (permitBase64 != null) catererData['business_permit'] = permitBase64;
+      if (idBase64 != null) catererData['valid_id'] = idBase64;
+
+      await FirebaseFirestore.instance
+          .collection('caterers')
+          .doc(uid)
+          .set(catererData, SetOptions(merge: true));
 
       setState(() {
         _isLoading = false;
@@ -222,10 +295,11 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
   // ─────────────────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F0F0),
+      backgroundColor: _bgPage,
       body: Stack(
         children: [
           Column(
@@ -233,19 +307,19 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
               _buildAppBar(),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       children: [
-                        _subtitleBanner(),
-                        const SizedBox(height: 12),
                         _buildBusinessInfoCard(),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
+                        _buildEventTypesCard(),
+                        const SizedBox(height: 14),
                         _buildLocationCard(),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         _buildRequirementsCard(),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
@@ -254,8 +328,6 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
               _buildBottomBar(),
             ],
           ),
-
-          // ── Progress overlay ───────────────────────────────
           if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.45),
@@ -268,7 +340,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withOpacity(0.12),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -278,11 +350,11 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(
-                        width: 56,
-                        height: 56,
+                        width: 52,
+                        height: 52,
                         child: CircularProgressIndicator(
                           color: _primary,
-                          strokeWidth: 4,
+                          strokeWidth: 3.5,
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -323,7 +395,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  // ── App bar ───────────────────────────────────────────────
+  // ── App Bar ───────────────────────────────────────────────
   Widget _buildAppBar() {
     return Container(
       color: Colors.white,
@@ -332,7 +404,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -367,36 +439,14 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  // ── Subtitle ──────────────────────────────────────────────
-  Widget _subtitleBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: const Text(
-        'Register your catering business to start receiving bookings.',
-        style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
-      ),
-    );
-  }
-
-  // ─── Card 1: Business Information ────────────────────────
+  // ── Card: Business Information ────────────────────────────
   Widget _buildBusinessInfoCard() {
     return _sectionCard(
       title: 'Business Information',
+      icon: Icons.storefront_outlined,
       child: Column(
         children: [
-          _iconField(
+          _inputField(
             icon: Icons.storefront_outlined,
             hint: 'Business Name',
             controller: _businessNameCtrl,
@@ -405,7 +455,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                 : null,
           ),
           const SizedBox(height: 10),
-          _iconField(
+          _inputField(
             icon: Icons.person_outline,
             hint: 'Owner Name',
             controller: _ownerNameCtrl,
@@ -414,7 +464,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                 : null,
           ),
           const SizedBox(height: 10),
-          _iconField(
+          _inputField(
             icon: Icons.phone_outlined,
             hint: 'Contact Number',
             controller: _contactCtrl,
@@ -428,14 +478,17 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                 : null,
           ),
           const SizedBox(height: 10),
-          _iconField(
+          _inputField(
             icon: Icons.email_outlined,
             hint: 'Email Address',
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email is required';
-              if (!v.contains('@')) return 'Enter a valid email';
+              if (!RegExp(
+                r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$",
+              ).hasMatch(v.trim()))
+                return 'Enter a valid email';
               return null;
             },
           ),
@@ -444,25 +497,252 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  // ─── Card 2: Location ─────────────────────────────────────
+  // ── Card: Event Types ─────────────────────────────────────
+  Widget _buildEventTypesCard() {
+    return _sectionCard(
+      title: 'Event Types Served',
+      icon: Icons.celebration_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select all event types your catering covers (shown as tags on your listing)',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF777777),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _allEventTypes.map((type) {
+              final selected = _selectedEventTypes.contains(type);
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (selected) {
+                      _selectedEventTypes.remove(type);
+                    } else {
+                      _selectedEventTypes.add(type);
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected ? _primary : _primaryBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selected ? _primary : _primary.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    type,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : _primary,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          if (_selectedEventTypes.isEmpty) ...[
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                Icon(Icons.info_outline, size: 13, color: _primary),
+                SizedBox(width: 6),
+                Text(
+                  'Select at least one event type',
+                  style: TextStyle(fontSize: 11, color: _primary),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Card: Location ────────────────────────────────────────
   Widget _buildLocationCard() {
+    const defaultCenter = LatLng(14.5995, 120.9842);
+
     return _sectionCard(
       title: 'Location',
+      icon: Icons.location_on_outlined,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _iconField(
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                SizedBox(
+                  height: 220,
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: defaultCenter,
+                      initialZoom: 12,
+                      onTap: (tapPosition, point) => _onMapTap(point),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.celebreats.app',
+                      ),
+                      if (_pickedLatLng != null)
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _pickedLatLng!,
+                              width: 40,
+                              height: 40,
+                              child: const Icon(
+                                Icons.location_pin,
+                                color: _primary,
+                                size: 40,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  bottom: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: _goToMyLocation,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _primary, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                      child: _mapLoading
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _primary,
+                              ),
+                            )
+                          : const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.my_location,
+                                  color: _primary,
+                                  size: 15,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Use my location',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: _primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+                if (_pickedLatLng == null)
+                  Positioned(
+                    top: 10,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'Tap the map to pin your location',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_pickedLatLng != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _primaryBg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _primary.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: _primary, size: 15),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Pinned: ${_pickedLatLng!.latitude.toStringAsFixed(5)}, '
+                      '${_pickedLatLng!.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: _primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          _inputField(
             icon: Icons.location_on_outlined,
             hint: 'Address',
-            helperText: 'Enter your complete address',
+            helperText: 'Auto-filled when you pin the map, or type manually',
             controller: _locationCtrl,
             validator: (v) =>
                 (v == null || v.trim().isEmpty) ? 'Address is required' : null,
           ),
           const SizedBox(height: 10),
-          _iconField(
+          _inputField(
             icon: Icons.map_outlined,
             hint: 'Service Area',
-            helperText: 'Coverage area (e.g. Quezon City, Metro Manila)',
+            helperText: 'e.g. Quezon City, Metro Manila',
             controller: _serviceAreaCtrl,
             validator: (v) => (v == null || v.trim().isEmpty)
                 ? 'Service area is required'
@@ -473,46 +753,50 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  // ─── Card 3: Requirements ────────────────────────────────
+  // ── Card: Requirements ────────────────────────────────────
   Widget _buildRequirementsCard() {
     return _sectionCard(
       title: 'Requirements',
+      icon: Icons.assignment_outlined,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _uploadRow(
+          _uploadTile(
             icon: Icons.verified_user_outlined,
-            label: 'Upload Business Permit',
-            buttonLabel: 'Upload Permit',
+            label: 'Business Permit',
+            subtitle: 'Upload a photo of your permit',
             file: _businessPermitFile,
+            buttonLabel: 'Upload Permit',
             onTap: () => _pickSingleFile('permit'),
           ),
           const SizedBox(height: 10),
-          _uploadRow(
+          _uploadTile(
             icon: Icons.badge_outlined,
-            label: 'Upload Valid ID',
-            buttonLabel: 'Upload ID',
+            label: 'Valid ID',
+            subtitle: 'Government-issued ID',
             file: _validIdFile,
+            buttonLabel: 'Upload ID',
             onTap: () => _pickSingleFile('id'),
           ),
           const SizedBox(height: 10),
-          _uploadRow(
+          _uploadTile(
             icon: Icons.photo_library_outlined,
-            label: 'Upload Sample Menu / Photos',
-            buttonLabel: 'Upload Files',
+            label: 'Menu / Sample Photos',
+            subtitle: _menuPhotoFiles.isEmpty
+                ? 'Up to 3 photos (1st photo = your listing cover)'
+                : '${_menuPhotoFiles.length} photo${_menuPhotoFiles.length > 1 ? 's' : ''} selected',
             file: _menuPhotoFiles.isNotEmpty ? _menuPhotoFiles.first : null,
             fileCount: _menuPhotoFiles.length,
+            buttonLabel: 'Upload Photos',
             onTap: _pickMenuPhoto,
           ),
           const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.info_outline, size: 13, color: _textLight),
               SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Max 4 menu photos. Images are compressed automatically.',
+                  'Images are compressed automatically. Max 3 photos.',
                   style: TextStyle(fontSize: 11, color: _textMid),
                 ),
               ),
@@ -523,7 +807,7 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  // ── Bottom bar ────────────────────────────────────────────
+  // ── Bottom Bar ────────────────────────────────────────────
   Widget _buildBottomBar() {
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -532,14 +816,24 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
         16,
         MediaQuery.of(context).padding.bottom + 12,
       ),
-      color: Colors.white,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: _border)),
+      ),
       child: SizedBox(
         width: double.infinity,
         height: 54,
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [_primary, _primaryLight]),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: _primary.withOpacity(0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: ElevatedButton(
             onPressed: _isLoading ? null : _handleSubmit,
@@ -547,15 +841,16 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
             child: const Text(
-              'Submit',
+              'Submit Registration',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
               ),
             ),
           ),
@@ -567,13 +862,18 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
   // ─────────────────────────────────────────────────────────
   // SHARED WIDGETS
   // ─────────────────────────────────────────────────────────
-  Widget _sectionCard({required String title, required Widget child}) {
+
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -585,22 +885,34 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: _textDark,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: const BoxDecoration(
+              color: _primaryBg,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: _primary, size: 18),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _textDark,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          child,
+          Padding(padding: const EdgeInsets.all(16), child: child),
         ],
       ),
     );
   }
 
-  Widget _iconField({
+  Widget _inputField({
     required IconData icon,
     required String hint,
     required TextEditingController controller,
@@ -615,22 +927,22 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _border),
           ),
           child: Row(
             children: [
               Container(
-                width: 48,
+                width: 46,
                 height: 50,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFFFF3ED),
+                  color: _primaryBg,
                   borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(9),
-                    bottomLeft: Radius.circular(9),
+                    topLeft: Radius.circular(11),
+                    bottomLeft: Radius.circular(11),
                   ),
                 ),
-                child: Icon(icon, color: _primary, size: 20),
+                child: Icon(icon, color: _primary, size: 19),
               ),
               Expanded(
                 child: TextFormField(
@@ -668,11 +980,12 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     );
   }
 
-  Widget _uploadRow({
+  Widget _uploadTile({
     required IconData icon,
     required String label,
-    required String buttonLabel,
+    required String subtitle,
     required File? file,
+    required String buttonLabel,
     required VoidCallback onTap,
     int fileCount = 0,
   }) {
@@ -680,20 +993,26 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _border),
+        color: uploaded ? _primaryBg : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: uploaded ? _primary.withOpacity(0.35) : _border,
+        ),
       ),
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF3ED),
-              borderRadius: BorderRadius.circular(8),
+              color: uploaded ? _primary : _primaryBg,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: _primary, size: 18),
+            child: Icon(
+              uploaded ? Icons.check_rounded : icon,
+              color: uploaded ? Colors.white : _primary,
+              size: 19,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -704,17 +1023,19 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
                   label,
                   style: const TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: _textDark,
                   ),
                 ),
-                if (uploaded)
-                  Text(
-                    fileCount > 1
-                        ? '$fileCount files selected'
-                        : '1 file selected ✓',
-                    style: const TextStyle(fontSize: 11, color: _primary),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: uploaded ? _primary : _textMid,
+                    fontWeight: uploaded ? FontWeight.w600 : FontWeight.normal,
                   ),
+                ),
               ],
             ),
           ),
@@ -725,16 +1046,16 @@ class _CatererRegistrationPageState extends State<CatererRegistrationPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: uploaded ? _primary : Colors.white,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: _primary, width: 1.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.upload_outlined,
+                    uploaded ? Icons.edit_outlined : Icons.upload_outlined,
                     color: uploaded ? Colors.white : _primary,
-                    size: 14,
+                    size: 13,
                   ),
                   const SizedBox(width: 5),
                   Text(
@@ -914,12 +1235,16 @@ class CatererSuccessPage extends StatelessWidget {
                             gradient: const LinearGradient(
                               colors: [_primary, _primaryLight],
                             ),
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _primary.withOpacity(0.35),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: ElevatedButton(
-                            // ── FIXED: Navigate to CatererDashboardPage
-                            // and clear the entire back stack so the user
-                            // cannot go back to the registration form.
                             onPressed: () =>
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute(
@@ -932,7 +1257,7 @@ class CatererSuccessPage extends StatelessWidget {
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(16),
                               ),
                             ),
                             child: const Text(
@@ -993,6 +1318,214 @@ class CatererSuccessPage extends StatelessWidget {
           style: const TextStyle(fontSize: 13, color: Color(0xFF333333)),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// HOMEPAGE CATERER CARD WIDGET
+// ─────────────────────────────────────────────────────────────
+class CatererCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback? onTap;
+  final VoidCallback? onFavorite;
+  final bool isFavorited;
+
+  const CatererCard({
+    super.key,
+    required this.data,
+    this.onTap,
+    this.onFavorite,
+    this.isFavorited = false,
+  });
+
+  static const Color _primary = Color(0xFFFF6B22);
+  static const Color _primaryBg = Color(0xFFFFF3ED);
+
+  // Decode Base64 string to image bytes
+  Uint8List? _decodeBase64(String? base64Str) {
+    if (base64Str == null || base64Str.isEmpty) return null;
+    try {
+      return base64Decode(base64Str);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String name = data['name'] ?? 'Caterer';
+    final double rating = (data['rating'] ?? 0.0).toDouble();
+    final int reviewCount = data['review_count'] ?? 0;
+    final String location = data['location'] ?? '';
+    final List<dynamic> eventTypes = data['event_types'] ?? [];
+    final Uint8List? coverBytes = _decodeBase64(data['cover_photo']);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Cover Photo ──────────────────────────────────
+            Stack(
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: coverBytes != null
+                      ? Image.memory(coverBytes, fit: BoxFit.cover)
+                      : Container(
+                          color: const Color(0xFFF5F5F5),
+                          child: const Center(
+                            child: Icon(
+                              Icons.restaurant,
+                              color: Color(0xFFCCCCCC),
+                              size: 40,
+                            ),
+                          ),
+                        ),
+                ),
+                // Favorite button
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: onFavorite,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isFavorited ? Icons.favorite : Icons.favorite_border,
+                        color: isFavorited ? _primary : const Color(0xFF999999),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Info section ─────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        color: Color(0xFFFFC107),
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '($reviewCount reviews)',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF888888),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  if (location.isNotEmpty)
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 13,
+                          color: Color(0xFF888888),
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            location,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF666666),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (eventTypes.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: eventTypes.take(4).map((type) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _primaryBg,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            type.toString(),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _primary,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

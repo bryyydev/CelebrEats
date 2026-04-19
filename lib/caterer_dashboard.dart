@@ -38,6 +38,16 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   final String uid = FirebaseAuth.instance.currentUser?.uid ?? '';
   final List<String> _tabs = ['Overview', 'Packages', 'Add-ons', 'Booking'];
 
+  // ── Safe back navigation ──────────────────────────────────
+  void _goBack() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      // Fallback: push replace to home if stack is empty
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+  }
+
   // ── Toggle availability ───────────────────────────────────
   Future<void> _toggleAvailability(bool current) async {
     await FirebaseFirestore.instance.collection('caterers').doc(uid).update({
@@ -81,7 +91,11 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'is_caterer': false,
       });
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        // Use pushReplacementNamed so the stack is fully reset to home/profile.
+        // Change '/home' to whatever your home route name is.
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     }
   }
 
@@ -90,27 +104,34 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   // ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('caterers')
-          .doc(uid)
-          .snapshots(),
-      builder: (context, snap) {
-        final data = snap.data?.data() as Map<String, dynamic>? ?? {};
-        final isActive = data['is_active'] as bool? ?? true;
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFF2F2F2),
-          body: Column(
-            children: [
-              _buildHeader(data, isActive),
-              _buildTabBar(),
-              Expanded(child: _buildTabContent(data)),
-              _buildExitButton(),
-            ],
-          ),
-        );
+    return PopScope(
+      // Intercept Android hardware back button as well
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _goBack();
       },
+      child: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('caterers')
+            .doc(uid)
+            .snapshots(),
+        builder: (context, snap) {
+          final data = snap.data?.data() as Map<String, dynamic>? ?? {};
+          final isActive = data['is_active'] as bool? ?? true;
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF2F2F2),
+            body: Column(
+              children: [
+                _buildHeader(data, isActive),
+                _buildTabBar(),
+                Expanded(child: _buildTabContent(data)),
+                _buildExitButton(),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -130,8 +151,9 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           child: Row(
             children: [
+              // ── FIX: use _goBack() instead of Navigator.pop(context) ──
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: _goBack,
                 child: Container(
                   width: 34,
                   height: 34,
@@ -1250,9 +1272,9 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _border, width: 1.5),
           ),
-          child: Row(
+          child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
+            children: [
               Icon(Icons.logout_outlined, color: _textMid, size: 18),
               SizedBox(width: 8),
               Text(

@@ -11,7 +11,11 @@ import 'package:image_picker/image_picker.dart';
 import 'favorite.dart';
 import 'caterer_registration_page.dart';
 import 'caterer_dashboard.dart';
-import 'sign_up.dart'; // ← import your SignUpScreen
+import 'sign_up.dart';
+import 'notifications_screen.dart';
+import 'payment_methods_page.dart';
+import 'help_support_page.dart';
+import 'terms_conditions_page.dart';
 
 // ─────────────────────────────────────────────────────────────
 // AUTH DIALOG
@@ -79,7 +83,6 @@ class _LoginRequiredSheet extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    // ✅ Navigate directly to SignUpScreen
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const SignUpScreen()),
@@ -202,12 +205,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────
-  // CATERER MODE HANDLER
-  // Called when the user taps the Caterer Mode tile.
-  //   • already a caterer  → open dashboard directly
-  //   • not yet a caterer  → show registration dialog
-  // ─────────────────────────────────────────────────────────
   void _handleCatererModeTap(bool isCaterer) {
     if (isCaterer) {
       Navigator.push(
@@ -386,6 +383,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────
+  // LOGGED IN BODY
+  // ─────────────────────────────────────────────────────────
   Widget _buildLoggedInBody(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: _userStream,
@@ -404,7 +404,6 @@ class _ProfilePageState extends State<ProfilePage> {
         final reviewCount = (data?['review_count'] as int?) ?? 0;
         final favoriteCount = (data?['favorite_count'] as int?) ?? 0;
 
-        // ── Read is_caterer live from Firestore stream ────────
         final isCaterer = data?['is_caterer'] as bool? ?? false;
 
         ImageProvider? avatarImage;
@@ -535,9 +534,13 @@ class _ProfilePageState extends State<ProfilePage> {
               iconPath: "assets/icons/changepassword_ic.svg",
               title: "Change Password",
             ),
-            const _MenuTile(
+            _MenuTile(
               iconPath: "assets/icons/notification_ic.svg",
               title: "Notification",
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              ),
             ),
             _MenuTile(
               iconPath: "assets/icons/favorites_ic.svg",
@@ -547,17 +550,32 @@ class _ProfilePageState extends State<ProfilePage> {
                 MaterialPageRoute(builder: (_) => const FavoritePage()),
               ),
             ),
-            const _MenuTile(
+            // ── Payment Methods ───────────────────────────────
+            _MenuTile(
               iconPath: "assets/icons/payment_method_ic.svg",
               title: "Payment Methods",
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PaymentMethodsPage()),
+              ),
             ),
-            const _MenuTile(
+            // ── Help & Support ────────────────────────────────
+            _MenuTile(
               iconPath: "assets/icons/help_support_ic.svg",
               title: "Help & Support",
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HelpSupportPage()),
+              ),
             ),
-            const _MenuTile(
+            // ── Terms & Conditions ────────────────────────────
+            _MenuTile(
               iconPath: "assets/icons/terms_condition_ic.svg",
               title: "Terms & Conditions",
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TermsConditionsPage()),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -590,6 +608,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────
+  // LOGGED OUT BODY
+  // ─────────────────────────────────────────────────────────
   Widget _buildLoggedOutBody(BuildContext context) {
     void guard(VoidCallback onLoggedIn) {
       if (_isLoggedIn) {
@@ -701,17 +722,29 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
         ),
-        const _MenuTile(
+        // ── Payment Methods (guest → login prompt) ────────
+        _MenuTile(
           iconPath: "assets/icons/payment_method_ic.svg",
           title: "Payment Methods",
+          onTap: () => showLoginRequiredDialog(context),
         ),
-        const _MenuTile(
+        // ── Help & Support (guest → open freely) ─────────
+        _MenuTile(
           iconPath: "assets/icons/help_support_ic.svg",
           title: "Help & Support",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const HelpSupportPage()),
+          ),
         ),
-        const _MenuTile(
+        // ── Terms & Conditions (guest → open freely) ──────
+        _MenuTile(
           iconPath: "assets/icons/terms_condition_ic.svg",
           title: "Terms & Conditions",
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TermsConditionsPage()),
+          ),
         ),
       ],
     );
@@ -721,6 +754,7 @@ class _ProfilePageState extends State<ProfilePage> {
 // ─────────────────────────────────────────────────────────────
 // CATERER MODE TILE
 // ─────────────────────────────────────────────────────────────
+
 class _CatererModeTile extends StatelessWidget {
   final bool isCaterer;
   final VoidCallback onTap;

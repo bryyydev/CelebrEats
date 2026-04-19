@@ -1,13 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'favorites_manager.dart';
 import 'notifications_screen.dart';
 import 'event_packages_screen.dart';
-import 'data/caterers_data.dart';
 import 'browse.dart';
 
 class HomePage extends StatefulWidget {
@@ -27,24 +27,14 @@ class _HomePageState extends State<HomePage> {
     {"label": "Baptism", "emoji": "🕊️"},
   ];
 
-  Future<void> logout(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', false);
-    if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final caterers = CaterersData.caterers;
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            /// TOP BAR
+            /// ── TOP BAR ──
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
               child: Row(
@@ -55,12 +45,10 @@ class _HomePageState extends State<HomePage> {
                       Image.asset(
                         "assets/logo.png",
                         height: 32,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                              Icons.restaurant,
-                              color: Colors.deepOrange,
-                              size: 32,
-                            ),
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.restaurant,
+                          color: Colors.deepOrange,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -73,35 +61,32 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const NotificationsScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen(),
+                      ),
+                    ),
                     child: SvgPicture.asset(
                       "assets/icons/notification_ic.svg",
                       height: 26,
                       width: 26,
-                      placeholderBuilder: (context) =>
-                          const Icon(Icons.notifications_none, size: 26),
+                      placeholderBuilder: (_) =>
+                          const Icon(Icons.notifications_none),
                     ),
                   ),
                 ],
               ),
             ),
 
-            /// SCROLLABLE CONTENT
+            /// ── MAIN CONTENT ──
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    /// HEADER
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 38),
+                      padding: EdgeInsets.symmetric(horizontal: 20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -123,12 +108,11 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                     ),
-
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     /// SEARCH
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Container(
                         height: 46,
                         decoration: BoxDecoration(
@@ -138,16 +122,15 @@ class _HomePageState extends State<HomePage> {
                         child: const TextField(
                           decoration: InputDecoration(
                             prefixIcon: Icon(Icons.search),
-                            hintText: "Search caterers, events...",
+                            hintText: "Search caterers...",
                             border: InputBorder.none,
                           ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 20),
 
-                    const SizedBox(height: 28),
-
-                    /// EVENT TYPE SECTION
+                    /// EVENT TYPE
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 20),
                       child: Text(
@@ -158,129 +141,25 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    _buildEventTypeChips(),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 25),
 
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: eventTypes.map((event) {
-                          final isSelected =
-                              selectedEventType == event["label"];
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                selectedEventType = event["label"] as String;
-                              });
-                              // Navigate to BrowsePage with selected event type
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => BrowsePage(
-                                    filterEventType: event["label"] as String,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: 72,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.deepOrange.withOpacity(0.08)
-                                    : Colors.grey[100],
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? Colors.deepOrange
-                                      : Colors.transparent,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    event["emoji"] as String,
-                                    style: const TextStyle(fontSize: 30),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    event["label"] as String,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                      color: isSelected
-                                          ? Colors.deepOrange
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                    /// FEATURED CATERERS
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        "Featured Caterers",
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-
-                    const SizedBox(height: 28),
-
-                    /// FEATURED CATERERS TITLE
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Featured Caterers",
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const BrowsePage(),
-                                ),
-                              );
-                            },
-                            child: const Text(
-                              "View All",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.deepOrange,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
                     const SizedBox(height: 14),
 
-                    /// CATERER CARDS
-                    Column(
-                      children: caterers.map((caterer) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: CatererCard(
-                            id: caterer["id"],
-                            image: caterer["image"],
-                            title: caterer["title"],
-                            rating: (caterer["rating"] as num).toDouble(),
-                            reviews: caterer["reviews"].toString(),
-                            location: caterer["location"],
-                            tags: List<String>.from(caterer["tags"]),
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                    _buildCatererList(),
 
                     const SizedBox(height: 40),
                   ],
@@ -292,100 +171,160 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  Widget _buildEventTypeChips() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: eventTypes.map((event) {
+          final isSelected = selectedEventType == event["label"];
+          return GestureDetector(
+            onTap: () {
+              setState(() => selectedEventType = event["label"] as String);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      BrowsePage(filterEventType: event["label"] as String),
+                ),
+              );
+            },
+            child: Container(
+              width: 72,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.deepOrange.withOpacity(0.1)
+                    : Colors.grey[100],
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected ? Colors.deepOrange : Colors.transparent,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    event["emoji"] as String,
+                    style: const TextStyle(fontSize: 30),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    event["label"] as String,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isSelected ? Colors.deepOrange : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildCatererList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('caterers').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final caterers = snapshot.data!.docs;
+
+        return Column(
+          children: caterers.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            Uint8List? imageBytes;
+
+            if (data['menu_photos'] != null &&
+                (data['menu_photos'] as List).isNotEmpty) {
+              try {
+                imageBytes = base64Decode(
+                  data['menu_photos'][0].toString().split(',').last,
+                );
+              } catch (_) {}
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: CatererCard(
+                id: doc.id,
+                title: data['name'] ?? 'No Name',
+                location: data['location'] ?? 'No location',
+                imageBytes: imageBytes,
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
 }
 
-/// Shared CatererCard widget used by both HomePage and BrowsePage
+/// ✅ FIXED: NO LOGIN CHECK HERE
 class CatererCard extends StatelessWidget {
   final String id;
-  final String image;
   final String title;
-  final double rating;
-  final String reviews;
   final String location;
-  final List<String> tags;
+  final Uint8List? imageBytes;
 
   const CatererCard({
     super.key,
     required this.id,
-    required this.image,
     required this.title,
-    required this.rating,
-    required this.reviews,
     required this.location,
-    required this.tags,
+    this.imageBytes,
   });
+
+  void _handleCardTap(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EventPackagesScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final favoritesManager = Provider.of<FavoritesManager>(context);
-    final isFavorite = favoritesManager.isFavorite(id);
-
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const EventPackagesScreen()),
-        );
-      },
+      onTap: () => _handleCardTap(context),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey[200]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05), // ✅ FIXED
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// IMAGE
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                  child: Image.asset(
-                    image,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: GestureDetector(
-                    onTap: () {
-                      favoritesManager.toggleFavorite(
-                        Package(
-                          id: id,
-                          image: image,
-                          title: title,
-                          rating: rating,
-                          price: "",
-                          oldPrice: "",
-                          guests: "",
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: isFavorite ? Colors.red : Colors.black,
-                        size: 22,
-                      ),
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
+              child: imageBytes != null
+                  ? Image.memory(
+                      imageBytes!,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.image, size: 50),
                     ),
-                  ),
-                ),
-              ],
             ),
-
-            /// DETAILS
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -398,51 +337,23 @@ class CatererCard extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.star, color: Colors.amber, size: 18),
-                      const SizedBox(width: 4),
-                      Text("$rating ($reviews)"),
-                    ],
-                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 16),
+                      const Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color: Colors.deepOrange,
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           location,
-                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.black54),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: tags.map((tag) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          tag,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.deepOrange,
-                          ),
-                        ),
-                      );
-                    }).toList(),
                   ),
                 ],
               ),

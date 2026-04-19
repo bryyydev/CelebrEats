@@ -4,10 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'notifications_screen.dart';
 import 'data/caterers_data.dart';
-import 'home.dart'; // CatererCard lives here
+import 'home.dart';
 
 class BrowsePage extends StatefulWidget {
-  final String? filterEventType; // received from HomePage event type tap
+  final String? filterEventType;
 
   const BrowsePage({super.key, this.filterEventType});
 
@@ -31,7 +31,6 @@ class _BrowsePageState extends State<BrowsePage> {
   @override
   void initState() {
     super.initState();
-    // Pre-select the event type passed from HomePage
     activeEventFilter = widget.filterEventType;
     _applyFilters();
   }
@@ -41,15 +40,14 @@ class _BrowsePageState extends State<BrowsePage> {
 
     setState(() {
       filteredCaterers = allCaterers.where((caterer) {
-        // Search filter
         final title = (caterer["title"] as String).toLowerCase();
         final tags = (caterer["tags"] as List).join(" ").toLowerCase();
+
         final matchesSearch =
             searchQuery.isEmpty ||
             title.contains(searchQuery.toLowerCase()) ||
             tags.contains(searchQuery.toLowerCase());
 
-        // Event type filter
         final matchesEvent =
             activeEventFilter == null ||
             activeEventFilter == "All" ||
@@ -82,12 +80,11 @@ class _BrowsePageState extends State<BrowsePage> {
                       Image.asset(
                         "assets/logo.png",
                         height: 32,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                              Icons.restaurant,
-                              color: Colors.deepOrange,
-                              size: 32,
-                            ),
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.restaurant,
+                          color: Colors.deepOrange,
+                          size: 32,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -104,7 +101,7 @@ class _BrowsePageState extends State<BrowsePage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const NotificationsScreen(),
+                          builder: (_) => const NotificationsScreen(),
                         ),
                       );
                     },
@@ -112,7 +109,7 @@ class _BrowsePageState extends State<BrowsePage> {
                       "assets/icons/notification_ic.svg",
                       height: 26,
                       width: 26,
-                      placeholderBuilder: (context) =>
+                      placeholderBuilder: (_) =>
                           const Icon(Icons.notifications_none, size: 26),
                     ),
                   ),
@@ -294,13 +291,9 @@ class _BrowsePageState extends State<BrowsePage> {
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 16),
                                 child: CatererCard(
-                                  id: caterer["id"],
-                                  image: caterer["image"],
-                                  title: caterer["title"],
-                                  rating: (caterer["rating"] as num).toDouble(),
-                                  reviews: caterer["reviews"].toString(),
-                                  location: caterer["location"],
-                                  tags: List<String>.from(caterer["tags"]),
+                                  id: caterer["id"] as String,
+                                  title: caterer["title"] as String,
+                                  location: caterer["location"] as String,
                                 ),
                               );
                             }).toList(),
