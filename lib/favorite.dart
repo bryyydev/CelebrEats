@@ -280,7 +280,9 @@ class FavoritePage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const CustomizePackagePage(),
+                            builder: (context) => EventPackagesScreen(
+                              catererId: package.id.toString(),
+                            ),
                           ),
                         );
                       },

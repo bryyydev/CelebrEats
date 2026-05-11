@@ -47,38 +47,65 @@ class DatabaseService {
   // CATERERS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Create a caterer profile
+  /// Create a caterer profile.
+  ///
+  /// [uid]             — the caterer's Firebase Auth UID (used as doc ID).
+  /// [businessName]    — display name shown on listing cards.
+  /// [description]     — short bio shown on the profile.
+  /// [locationAddress] — human-readable address stored in `location` field.
+  /// [eventTypes]      — list of event labels (e.g. ['Wedding', 'Birthday']).
+  ///                     Stored as an array so Browse can use arrayContains queries.
+  /// [minimumGuests]   — minimum headcount the caterer accepts.
   Future<void> createCaterer({
-    required String userId,
+    required String uid,
     required String businessName,
     required String description,
-    required String location,
+    required String locationAddress,
+    required List<String> eventTypes,
     required int minimumGuests,
   }) async {
-    await _db.collection('caterers').doc(userId).set({
-      'caterer_id': userId,
-      'user_id': userId,
+    await _db.collection('caterers').doc(uid).set({
+      'caterer_id': uid,
+      'user_id': uid,
       'name': businessName,
       'description': description,
-      'location': location,
+      // Stored under 'location' so Browse cards can display it directly.
+      'location': locationAddress,
+      // Stored as an array — enables .where('event_types', arrayContains: x)
+      'event_types': eventTypes,
       'rating': 0.0,
+      'review_count': 0,
       'minimum_guests': minimumGuests,
+      'is_active': true,
+      'is_verified': false,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
 
-  /// Get all caterers (for Browse screen)
+  /// Get all caterers (for Browse screen — no filter)
   Stream<QuerySnapshot> getCaterers() {
     return _db.collection('caterers').snapshots();
   }
 
-  /// Get a single caterer by ID
+  /// Get caterers whose event_types array contains [eventType].
+  ///
+  /// Used by BrowsePage when the user taps an event-type chip so that
+  /// only matching caterers are fetched from Firestore (no client-side
+  /// filtering needed, which was the root cause of the "0 found" bug).
+  Stream<QuerySnapshot> getCaterersByEventType(String eventType) {
+    return _db
+        .collection('caterers')
+        .where('event_types', arrayContains: eventType)
+        .snapshots();
+  }
+
+  /// Get a single caterer document by ID
   Future<Map<String, dynamic>?> getCaterer(String catererId) async {
     final doc = await _db.collection('caterers').doc(catererId).get();
     return doc.exists ? doc.data() : null;
   }
 
-  /// Update caterer profile
+  /// Update caterer profile fields
   Future<void> updateCaterer(
     String catererId,
     Map<String, dynamic> data,
@@ -90,23 +117,42 @@ class DatabaseService {
   // PACKAGES COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Create a package for a caterer
+  /// Create a package for a caterer.
+  ///
+  /// [catererId]     — Firestore document ID of the owning caterer.
+  /// [name]          — Package display name (e.g. "Silver Package").
+  /// [pricePerPerson]— Cost per guest head in PHP.
+  /// [eventType]     — Which event this package is designed for.
+  /// [categoryTab]   — Tab label in EventPackagesScreen: must be exactly
+  ///                   'Package A', 'Package B', or 'Package C'.
+  ///                   This value is used in a Firestore equality filter so
+  ///                   the correct packages appear under the correct tab.
+  /// [inclusions]    — List of items included in the package.
+  /// [active]        — Whether the package is visible to customers.
   Future<void> createPackage({
     required String catererId,
     required String name,
     required double pricePerPerson,
+    required String eventType,
+    required String categoryTab, // 'Package A' | 'Package B' | 'Package C'
+    required List<String> inclusions,
     required bool active,
   }) async {
     await _db.collection('packages').add({
       'caterer_id': catererId,
       'name': name,
       'price_per_person': pricePerPerson,
+      'event_type': eventType,
+      // Used by EventPackagesScreen TabBarView to route packages into the
+      // correct tab. Must match the tab label strings exactly.
+      'category_tab': categoryTab,
+      'inclusions': inclusions,
       'active': active,
       'created_at': FieldValue.serverTimestamp(),
     });
   }
 
-  /// Get all packages for a caterer
+  /// Get all active packages for a caterer (all tabs combined).
   Stream<QuerySnapshot> getPackages(String catererId) {
     return _db
         .collection('packages')
@@ -115,11 +161,24 @@ class DatabaseService {
         .snapshots();
   }
 
+  /// Get active packages for a caterer filtered by [categoryTab].
+  ///
+  /// Called once per tab in EventPackagesScreen so each tab only loads
+  /// the packages that belong to it.
+  Stream<QuerySnapshot> getPackagesByTab(String catererId, String categoryTab) {
+    return _db
+        .collection('packages')
+        .where('caterer_id', isEqualTo: catererId)
+        .where('category_tab', isEqualTo: categoryTab)
+        .where('active', isEqualTo: true)
+        .snapshots();
+  }
+
   // ─────────────────────────────────────────────
   // ADDONS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Create an add-on for a caterer
+  /// Create an add-on item for a caterer
   Future<void> createAddon({
     required String catererId,
     required String name,
@@ -137,7 +196,7 @@ class DatabaseService {
     });
   }
 
-  /// Get all add-ons for a caterer
+  /// Get all active add-ons for a caterer
   Stream<QuerySnapshot> getAddons(String catererId) {
     return _db
         .collection('addons')
@@ -150,7 +209,7 @@ class DatabaseService {
   // BOOKINGS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Create a new booking
+  /// Create a new booking document and return its generated ID
   Future<String> createBooking({
     required String catererId,
     required String packageId,
@@ -176,11 +235,9 @@ class DatabaseService {
     return doc.id;
   }
 
-  /// Get all bookings for current user
+  /// Stream of all bookings belonging to the currently logged-in user
   Stream<QuerySnapshot> getUserBookings() {
-    if (currentUserId == null) {
-      return const Stream.empty();
-    }
+    if (currentUserId == null) return const Stream.empty();
     return _db
         .collection('bookings')
         .where('user_id', isEqualTo: currentUserId)
@@ -188,7 +245,7 @@ class DatabaseService {
         .snapshots();
   }
 
-  /// Get all bookings for a caterer
+  /// Stream of all bookings for a specific caterer
   Stream<QuerySnapshot> getCatererBookings(String catererId) {
     return _db
         .collection('bookings')
@@ -197,7 +254,7 @@ class DatabaseService {
         .snapshots();
   }
 
-  /// Update booking status (accept / confirm / complete)
+  /// Update booking status — accepted / confirmed / completed / cancelled
   Future<void> updateBookingStatus(String bookingId, String status) async {
     await _db.collection('bookings').doc(bookingId).update({
       'status': status,
@@ -209,7 +266,7 @@ class DatabaseService {
   // PAYMENTS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Record a payment
+  /// Record a payment against a booking
   Future<void> createPayment({
     required String bookingId,
     required String method,
@@ -231,7 +288,7 @@ class DatabaseService {
   // MESSAGES COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Send a message
+  /// Send a message tied to a specific booking
   Future<void> sendMessage({
     required String receiverId,
     required String bookingId,
@@ -248,7 +305,7 @@ class DatabaseService {
     });
   }
 
-  /// Get real-time messages for a booking
+  /// Real-time stream of messages for a booking, oldest first
   Stream<QuerySnapshot> getMessages(String bookingId) {
     return _db
         .collection('messages')
@@ -257,7 +314,7 @@ class DatabaseService {
         .snapshots();
   }
 
-  /// Mark message as read
+  /// Mark a single message document as read
   Future<void> markMessageRead(String messageId) async {
     await _db.collection('messages').doc(messageId).update({'read': true});
   }
@@ -266,7 +323,7 @@ class DatabaseService {
   // REVIEWS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Submit a review
+  /// Submit a review for a completed booking
   Future<void> createReview({
     required String catererId,
     required String bookingId,
@@ -284,7 +341,7 @@ class DatabaseService {
     });
   }
 
-  /// Get all reviews for a caterer
+  /// Real-time stream of all reviews for a caterer, newest first
   Stream<QuerySnapshot> getCatererReviews(String catererId) {
     return _db
         .collection('reviews')
@@ -297,7 +354,7 @@ class DatabaseService {
   // NOTIFICATIONS COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Get all notifications for current user
+  /// Real-time stream of all notifications for the current user, newest first
   Stream<QuerySnapshot> getNotifications() {
     if (currentUserId == null) return const Stream.empty();
     return _db
@@ -307,12 +364,12 @@ class DatabaseService {
         .snapshots();
   }
 
-  /// Mark notification as read
+  /// Mark a notification document as read
   Future<void> markNotificationRead(String notifId) async {
     await _db.collection('notifications').doc(notifId).update({'read': true});
   }
 
-  /// Send a notification to a user
+  /// Push a notification to any user by their UID
   Future<void> sendNotification({
     required String userId,
     required String type,
@@ -333,7 +390,7 @@ class DatabaseService {
   // FAVORITES COLLECTION
   // ─────────────────────────────────────────────
 
-  /// Add a caterer to favorites
+  /// Save a caterer to the current user's favorites
   Future<void> addFavorite(String catererId) async {
     if (currentUserId == null) return;
     await _db.collection('favorites').add({
@@ -343,7 +400,7 @@ class DatabaseService {
     });
   }
 
-  /// Remove a caterer from favorites
+  /// Remove a caterer from the current user's favorites
   Future<void> removeFavorite(String catererId) async {
     if (currentUserId == null) return;
     final snapshot = await _db
@@ -351,13 +408,12 @@ class DatabaseService {
         .where('user_id', isEqualTo: currentUserId)
         .where('caterer_id', isEqualTo: catererId)
         .get();
-
     for (final doc in snapshot.docs) {
       await doc.reference.delete();
     }
   }
 
-  /// Get all favorites for current user
+  /// Real-time stream of the current user's favorited caterers
   Stream<QuerySnapshot> getFavorites() {
     if (currentUserId == null) return const Stream.empty();
     return _db
@@ -366,7 +422,7 @@ class DatabaseService {
         .snapshots();
   }
 
-  /// Check if a caterer is already favorited
+  /// Returns true if [catererId] is already in the current user's favorites
   Future<bool> isFavorite(String catererId) async {
     if (currentUserId == null) return false;
     final snapshot = await _db

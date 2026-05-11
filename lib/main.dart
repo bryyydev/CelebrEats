@@ -13,6 +13,7 @@ import 'customize_package.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
@@ -40,20 +41,25 @@ class CateringApp extends StatelessWidget {
       title: 'CelebrEats',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.orange, useMaterial3: true),
+
       home: const AppRoot(),
+
       routes: {
         '/login': (context) => const LogInScreen(),
         '/signup': (context) => const SignUpScreen(),
         '/home': (context) => const MainNavigation(),
-        '/customize-package': (context) =>
-            const AuthGuard(child: CustomizePackagePage()),
+
+        // FIXED
+        '/customize-package': (context) => AuthGuard(
+          child: const CustomizePackage(catererId: '', catererName: ''),
+        ),
       },
     );
   }
 }
 
-// ── AppRoot ──────────────────────────────────────────────────────────────────
-// Now flows directly: Splash (6s) -> MainNavigation (Home)
+// ─────────────────────────────────────────────────────────────
+
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
 
@@ -67,27 +73,29 @@ class _AppRootState extends State<AppRoot> {
   @override
   void initState() {
     super.initState();
-    // Keep the splash for 6 seconds as requested
-    Future.delayed(const Duration(seconds: 6), () {
-      if (mounted) setState(() => _showSplash = false);
+
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() => _showSplash = false);
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // 1. Show Splash Screen first
-    if (_showSplash) return const SplashScreen();
+    if (_showSplash) {
+      return const SplashScreen();
+    }
 
-    // 2. After splash, go directly to Home (MainNavigation)
-    // If you want the home page to be accessible to guests, we return it here.
     return const MainNavigation();
   }
 }
 
-// ── AuthGuard ────────────────────────────────────────────────────────────────
-// Use this for specific screens that MUST have a login (like Checkout or Profile)
+// ─────────────────────────────────────────────────────────────
+
 class AuthGuard extends StatelessWidget {
   final Widget child;
+
   const AuthGuard({super.key, required this.child});
 
   @override
@@ -100,11 +108,11 @@ class AuthGuard extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        // If logged in, show the protected page
+
         if (snapshot.hasData && snapshot.data != null) {
           return child;
         }
-        // Otherwise, redirect to Login
+
         return const LogInScreen();
       },
     );

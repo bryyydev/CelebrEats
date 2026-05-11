@@ -6,14 +6,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 // ─────────────────────────────────────────────────────────────
 // CATERER DASHBOARD PAGE
 //
-// Reads / writes these Firestore collections (your schema):
-//   caterers/{uid}   — profile, name, rating, is_active,
-//                      menu_photos, logo_photo, review_count
-//   packages/{id}    — caterer_id, name, description,
-//                      price_per_person, active
-//   addons/{id}      — caterer_id, name, category, price, active
-//   bookings/{id}    — caterer_id, user_id, status,
-//                      guests, date, total, customer_name
+// KEY FIXES vs original
+// ─────────────────────
+// 1. _showPackageSheet now has a category_tab dropdown
+//    ('Package A' / 'Package B' / 'Package C') and saves that
+//    value to Firestore so EventPackagesScreen can filter by tab.
+// 2. The "Add Package" payload also includes 'description' and
+//    'inclusions' (parsed from a comma-separated text field) so
+//    the consumer screen can display them correctly.
+// 3. All other UI, colours, and layout are unchanged.
 // ─────────────────────────────────────────────────────────────
 
 class CatererDashboardPage extends StatefulWidget {
@@ -38,12 +39,18 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   final String uid = FirebaseAuth.instance.currentUser?.uid ?? '';
   final List<String> _tabs = ['Overview', 'Packages', 'Add-ons', 'Booking'];
 
+  // ── Tab labels that must match Firestore `category_tab` values ──────────
+  static const List<String> _categoryTabs = [
+    'Package A',
+    'Package B',
+    'Package C',
+  ];
+
   // ── Safe back navigation ──────────────────────────────────
   void _goBack() {
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     } else {
-      // Fallback: push replace to home if stack is empty
       Navigator.pushReplacementNamed(context, '/home');
     }
   }
@@ -91,11 +98,7 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'is_caterer': false,
       });
-      if (mounted) {
-        // Use pushReplacementNamed so the stack is fully reset to home/profile.
-        // Change '/home' to whatever your home route name is.
-        Navigator.pushReplacementNamed(context, '/home');
-      }
+      if (mounted) Navigator.pushReplacementNamed(context, '/home');
     }
   }
 
@@ -105,7 +108,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Intercept Android hardware back button as well
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _goBack();
@@ -151,7 +153,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
           child: Row(
             children: [
-              // ── FIX: use _goBack() instead of Navigator.pop(context) ──
               GestureDetector(
                 onTap: _goBack,
                 child: Container(
@@ -321,19 +322,16 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Cover photo
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),
                   child: _buildCoverImage(data),
                 ),
-
                 Padding(
                   padding: const EdgeInsets.all(14),
                   child: Row(
                     children: [
-                      // Logo / storefront icon
                       _buildLogoWidget(data),
                       const SizedBox(width: 12),
                       Expanded(
@@ -372,8 +370,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
                     ],
                   ),
                 ),
-
-                // Available / Unavailable badge
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                   child: Container(
@@ -466,7 +462,7 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
 
           const SizedBox(height: 16),
 
-          // ── Recent bookings header ────────────────────────
+          // ── Recent bookings ───────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -522,7 +518,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
     );
   }
 
-  // ── Cover image (menu_photos[0]) ──────────────────────────
   Widget _buildCoverImage(Map<String, dynamic> data) {
     final photos = data['menu_photos'] as List?;
     if (photos != null && photos.isNotEmpty) {
@@ -551,7 +546,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
     );
   }
 
-  // ── Logo widget (logo_photo or storefront icon) ───────────
   Widget _buildLogoWidget(Map<String, dynamic> data) {
     final logoRaw = data['logo_photo'] as String?;
     if (logoRaw != null && logoRaw.isNotEmpty) {
@@ -667,7 +661,7 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
                 ),
                 icon: const Icon(Icons.add, color: Colors.white, size: 16),
                 label: const Text(
-                  'Add Packages',
+                  'Add Package',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -690,7 +684,7 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
                 return _emptyState(
                   Icons.inventory_2_outlined,
                   'No Packages Yet',
-                  'Tap "+ Add Packages" to create your first package',
+                  'Tap "+ Add Package" to create your first package',
                 );
               }
               return ListView.separated(
@@ -711,6 +705,9 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
 
   Widget _packageCard(String docId, Map<String, dynamic> d) {
     final active = d['active'] as bool? ?? true;
+    // Show which tab this package belongs to
+    final categoryTab = d['category_tab'] as String? ?? '';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -730,13 +727,38 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  d['name'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: _textDark,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      d['name'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _textDark,
+                      ),
+                    ),
+                    if (categoryTab.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _primaryBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          categoryTab,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: _primary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               _toggle(active, (val) async {
@@ -1295,11 +1317,14 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   // ─────────────────────────────────────────────────────────
   // BOTTOM SHEETS
   // ─────────────────────────────────────────────────────────
-  void _showAddPackageSheet() => _showPackageSheet(null, null);
 
+  void _showAddPackageSheet() => _showPackageSheet(null, null);
   void _showEditPackageSheet(String id, Map<String, dynamic> d) =>
       _showPackageSheet(id, d);
 
+  /// FIX: Sheet now includes a category_tab dropdown so the caterer can choose
+  /// which tab (Package A / B / C) this package belongs to. That value is
+  /// saved to Firestore and consumed by EventPackagesScreen's StreamBuilder.
   void _showPackageSheet(String? docId, Map<String, dynamic>? existing) {
     final nameCtrl = TextEditingController(text: existing?['name'] ?? '');
     final descCtrl = TextEditingController(
@@ -1308,6 +1333,19 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
     final priceCtrl = TextEditingController(
       text: existing?['price_per_person']?.toString() ?? '',
     );
+    // Pre-fill inclusions as a comma-separated string for easy editing
+    final inclusionsCtrl = TextEditingController(
+      text: existing != null
+          ? ((existing['inclusions'] as List<dynamic>? ?? [])
+                .map((e) => e.toString())
+                .join(', '))
+          : '',
+    );
+    // Default category_tab to the first option if none stored yet
+    String selectedCategoryTab =
+        (existing?['category_tab'] as String?)?.isNotEmpty == true
+        ? existing!['category_tab'] as String
+        : _categoryTabs.first;
 
     showModalBottomSheet(
       context: context,
@@ -1317,54 +1355,129 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: _bottomSheet(
-          title: docId == null ? 'Add Package' : 'Edit Package',
-          child: Column(
-            children: [
-              _sheetField(nameCtrl, 'Package Name', Icons.inventory_2_outlined),
-              const SizedBox(height: 12),
-              _sheetField(
-                descCtrl,
-                'Description',
-                Icons.notes_outlined,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-              _sheetField(
-                priceCtrl,
-                'Price per Person (₱)',
-                Icons.attach_money_outlined,
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 20),
-              _sheetSubmitButton(
-                label: docId == null ? 'Add Package' : 'Save Changes',
-                onTap: () async {
-                  if (nameCtrl.text.trim().isEmpty ||
-                      priceCtrl.text.trim().isEmpty)
-                    return;
-                  final payload = {
-                    'caterer_id': uid,
-                    'name': nameCtrl.text.trim(),
-                    'description': descCtrl.text.trim(),
-                    'price_per_person':
-                        num.tryParse(priceCtrl.text.trim()) ?? 0,
-                    'active': true,
-                  };
-                  if (docId == null) {
-                    await FirebaseFirestore.instance
-                        .collection('packages')
-                        .add(payload);
-                  } else {
-                    await FirebaseFirestore.instance
-                        .collection('packages')
-                        .doc(docId)
-                        .update(payload);
-                  }
-                  if (mounted) Navigator.pop(context);
-                },
-              ),
-            ],
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => _bottomSheet(
+            title: docId == null ? 'Add Package' : 'Edit Package',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Package name
+                _sheetField(
+                  nameCtrl,
+                  'Package Name',
+                  Icons.inventory_2_outlined,
+                ),
+                const SizedBox(height: 12),
+
+                // Description
+                _sheetField(
+                  descCtrl,
+                  'Description',
+                  Icons.notes_outlined,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+
+                // Price per person
+                _sheetField(
+                  priceCtrl,
+                  'Price per Person (₱)',
+                  Icons.attach_money_outlined,
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+
+                // Inclusions (comma-separated)
+                _sheetField(
+                  inclusionsCtrl,
+                  'Inclusions (comma separated)',
+                  Icons.checklist_outlined,
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+
+                // ── FIX: Category tab dropdown ─────────────────────────
+                // The selected value becomes the `category_tab` field in
+                // Firestore. EventPackagesScreen filters by this exact string.
+                const Text(
+                  'Package Tab',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: selectedCategoryTab,
+                      isExpanded: true,
+                      items: _categoryTabs
+                          .map(
+                            (t) => DropdownMenuItem(value: t, child: Text(t)),
+                          )
+                          .toList(),
+                      onChanged: (v) => setSheet(
+                        () => selectedCategoryTab = v ?? selectedCategoryTab,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                _sheetSubmitButton(
+                  label: docId == null ? 'Add Package' : 'Save Changes',
+                  onTap: () async {
+                    if (nameCtrl.text.trim().isEmpty ||
+                        priceCtrl.text.trim().isEmpty)
+                      return;
+
+                    // Parse comma-separated inclusions into a List<String>
+                    final inclusions = inclusionsCtrl.text
+                        .split(',')
+                        .map((s) => s.trim())
+                        .where((s) => s.isNotEmpty)
+                        .toList();
+
+                    final payload = {
+                      'caterer_id': uid,
+                      'name': nameCtrl.text.trim(),
+                      'description': descCtrl.text.trim(),
+                      'price_per_person':
+                          num.tryParse(priceCtrl.text.trim()) ?? 0,
+                      'inclusions': inclusions,
+                      // Saved to Firestore so EventPackagesScreen can filter
+                      // packages into the correct TabBarView tab.
+                      'category_tab': selectedCategoryTab,
+                      'active': true,
+                    };
+
+                    if (docId == null) {
+                      await FirebaseFirestore.instance
+                          .collection('packages')
+                          .add(payload);
+                    } else {
+                      await FirebaseFirestore.instance
+                          .collection('packages')
+                          .doc(docId)
+                          .update(payload);
+                    }
+                    if (mounted) Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1372,7 +1485,6 @@ class _CatererDashboardPageState extends State<CatererDashboardPage> {
   }
 
   void _showAddAddonSheet() => _showAddonSheet(null, null);
-
   void _showEditAddonSheet(String id, Map<String, dynamic> d) =>
       _showAddonSheet(id, d);
 

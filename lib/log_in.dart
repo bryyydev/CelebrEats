@@ -169,7 +169,7 @@ class _LogInScreenState extends State<LogInScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 26),
           child: Column(
             children: [
-              const SizedBox(height: 26),
+              const SizedBox(height: 18),
               Image.asset(
                 'assets/logo.png',
                 height: 320,
@@ -195,7 +195,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               TextField(
                 controller: emailCtrl,
                 enabled: !_isLoading,
@@ -204,7 +204,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   prefixIcon: Icons.email_outlined,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -212,7 +212,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               TextField(
                 controller: passCtrl,
                 enabled: !_isLoading,
@@ -257,7 +257,7 @@ class _LogInScreenState extends State<LogInScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 height: 54,
