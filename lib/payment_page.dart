@@ -1,3 +1,4 @@
+import 'package:celebreats/services/booking_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'booking_service.dart';
