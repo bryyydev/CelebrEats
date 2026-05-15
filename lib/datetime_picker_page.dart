@@ -2,10 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'review_order_page.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE TIME PICKER PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Changes from original (all UI preserved exactly):
+//   - Constructor accepts new required booking-context args:
+//       catererId, catererName, packageId, packageName, pricePerPerson
+//   - Constructor accepts optional pre-selected values from _BookingSheet:
+//       preselectedEventType, preselectedDate, preselectedTime, preselectedGuests
+//     When provided these pre-fill the form so the user's quick-booking
+//     selections aren't lost.
+//   - _proceedToReview() now passes all booking context to ReviewOrderPage
+//     so ReviewOrderPage can call BookingService with full data.
+//   - No UI components, styling, or animations changed.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class DateTimePickerPage extends StatefulWidget {
+  // ── Existing param (preserved) ────────────────────────────────────────────
   final Map<String, List<String>> selectedItems;
 
-  const DateTimePickerPage({super.key, required this.selectedItems});
+  // ── New: Firestore booking context ────────────────────────────────────────
+  final String catererId;
+  final String catererName;
+  final String packageId;
+  final String packageName;
+  final double pricePerPerson;
+
+  // ── Optional pre-fills from _BookingSheet quick-booking ───────────────────
+  final String? preselectedEventType;
+  final DateTime? preselectedDate;
+  final TimeOfDay? preselectedTime;
+  final int? preselectedGuests;
+
+  const DateTimePickerPage({
+    super.key,
+    // Original
+    required this.selectedItems,
+    // New required
+    required this.catererId,
+    required this.catererName,
+    required this.packageId,
+    required this.packageName,
+    required this.pricePerPerson,
+    // New optional pre-fills
+    this.preselectedEventType,
+    this.preselectedDate,
+    this.preselectedTime,
+    this.preselectedGuests,
+  });
 
   @override
   State<DateTimePickerPage> createState() => _DateTimePickerPageState();
@@ -17,10 +62,10 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
 
-  DateTime? selectedDate;
-  TimeOfDay? selectedTime;
-  String eventType = 'Birthday';
-  int numberOfGuests = 50;
+  late DateTime? selectedDate;
+  late TimeOfDay? selectedTime;
+  late String eventType;
+  late int numberOfGuests;
 
   final List<String> eventTypes = [
     'Birthday',
@@ -30,6 +75,28 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
     'Graduation',
     'Other',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill from quick-booking sheet if provided, otherwise use defaults
+    selectedDate = widget.preselectedDate;
+    selectedTime = widget.preselectedTime;
+    numberOfGuests = widget.preselectedGuests ?? 50;
+
+    // Map _BookingSheet event type names to the dropdown list.
+    // Both lists share Birthday/Wedding/etc. — only 'Reunion'/'Baptism' differ.
+    eventType = _mapEventType(widget.preselectedEventType) ?? 'Birthday';
+  }
+
+  /// Maps _BookingSheet event type strings to DateTimePickerPage dropdown values.
+  String? _mapEventType(String? raw) {
+    if (raw == null) return null;
+    // Exact match first
+    if (eventTypes.contains(raw)) return raw;
+    // Fuzzy: 'Debut' → 'Other', 'Baptism' → 'Other', 'Reunion' → 'Other'
+    return 'Other';
+  }
 
   @override
   void dispose() {
@@ -59,11 +126,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         );
       },
     );
-    if (picked != null) {
-      setState(() {
-        selectedDate = picked;
-      });
-    }
+    if (picked != null) setState(() => selectedDate = picked);
   }
 
   Future<void> _selectTime(BuildContext context) async {
@@ -83,11 +146,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         );
       },
     );
-    if (picked != null) {
-      setState(() {
-        selectedTime = picked;
-      });
-    }
+    if (picked != null) setState(() => selectedTime = picked);
   }
 
   bool get canProceed {
@@ -106,6 +165,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
     return DateFormat('h:mm a').format(dt);
   }
 
+  // ── FIX: passes full booking context to ReviewOrderPage ──────────────────
   void _proceedToReview() {
     if (!canProceed) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -122,6 +182,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
       context,
       MaterialPageRoute(
         builder: (context) => ReviewOrderPage(
+          // Original params
           selectedItems: widget.selectedItems,
           eventName: _eventNameController.text,
           eventType: eventType,
@@ -131,10 +192,20 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
           location: _locationController.text,
           contactNumber: _contactController.text,
           numberOfGuests: numberOfGuests.toString(),
+          // New params forwarded from constructor
+          catererId: widget.catererId,
+          catererName: widget.catererName,
+          packageId: widget.packageId,
+          packageName: widget.packageName,
+          pricePerPerson: widget.pricePerPerson,
         ),
       ),
     );
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD  (all UI unchanged from original)
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -181,7 +252,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
                       controller: _eventNameController,
                       label: 'Event Name',
                       icon: Icons.celebration,
-                      hint: 'e.g., John\'s 25th Birthday',
+                      hint: "e.g., John's 25th Birthday",
                     ),
                     const SizedBox(height: 16),
 
@@ -215,7 +286,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Venue - User can type
+                    // Venue
                     _buildModernTextField(
                       controller: _venueController,
                       label: 'Venue',
@@ -310,6 +381,8 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
     );
   }
 
+  // ── Widget helpers (all unchanged from original) ──────────────────────────
+
   Widget _buildModernTextField({
     required TextEditingController controller,
     required String label,
@@ -389,11 +462,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
           return DropdownMenuItem<String>(value: type, child: Text(type));
         }).toList(),
         onChanged: (String? newValue) {
-          if (newValue != null) {
-            setState(() {
-              eventType = newValue;
-            });
-          }
+          if (newValue != null) setState(() => eventType = newValue);
         },
       ),
     );
@@ -545,9 +614,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
               IconButton(
                 onPressed: () {
                   if (numberOfGuests > 10) {
-                    setState(() {
-                      numberOfGuests -= 10;
-                    });
+                    setState(() => numberOfGuests -= 10);
                   }
                 },
                 icon: Container(
@@ -570,9 +637,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
               IconButton(
                 onPressed: () {
                   if (numberOfGuests < 500) {
-                    setState(() {
-                      numberOfGuests += 10;
-                    });
+                    setState(() => numberOfGuests += 10);
                   }
                 },
                 icon: Container(

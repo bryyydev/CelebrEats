@@ -86,7 +86,7 @@ class FavoritePage extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.favorite_border,
                             size: 80,
                             color: Colors.grey,
@@ -280,8 +280,10 @@ class FavoritePage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => EventPackagesScreen(
+                            builder: (context) => CustomizePackage(
                               catererId: package.id.toString(),
+                              catererName: package
+                                  .title, // FIXED: Added missing catererName
                             ),
                           ),
                         );

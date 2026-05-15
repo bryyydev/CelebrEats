@@ -1,18 +1,9 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/material.dart';
 
-import 'notifications_screen.dart';
 import 'event_packages_screen.dart';
-import 'home.dart';
 
 class BrowsePage extends StatefulWidget {
-  /// When non-null the Browse screen opens with this event type pre-selected.
-  /// Comes from HomePage's event-type chip tap.
   final String? filterEventType;
 
   const BrowsePage({super.key, this.filterEventType});
@@ -22,20 +13,12 @@ class BrowsePage extends StatefulWidget {
 }
 
 class _BrowsePageState extends State<BrowsePage> {
-  final TextEditingController searchController = TextEditingController();
-
-  // FIX: activeEventFilter drives the Firestore query directly.
-  // Null / 'All' → no filter; any other string → arrayContains query.
-  String? activeEventFilter;
-
-  // Local text entered in the search box — applied client-side on top of
-  // the Firestore snapshot so we only need one StreamBuilder.
-  String _searchQuery = '';
+  String selectedType = 'All';
 
   final List<Map<String, dynamic>> eventTypes = [
-    {"label": "All", "emoji": "🍽️"},
-    {"label": "Birthday", "emoji": "🎂"},
+    {"label": "All", "emoji": "✨"},
     {"label": "Wedding", "emoji": "💍"},
+    {"label": "Birthday", "emoji": "🎂"},
     {"label": "Reunion", "emoji": "🎉"},
     {"label": "Baptism", "emoji": "🕊️"},
   ];
@@ -43,355 +26,278 @@ class _BrowsePageState extends State<BrowsePage> {
   @override
   void initState() {
     super.initState();
-    // Pre-select the event type passed from the home screen (if any)
-    activeEventFilter = widget.filterEventType;
-    searchController.addListener(() {
-      setState(() => _searchQuery = searchController.text.trim().toLowerCase());
-    });
+
+    selectedType = widget.filterEventType ?? 'All';
   }
 
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
-  }
+  Query _buildQuery() {
+    Query query = FirebaseFirestore.instance.collectionGroup('packages');
 
-  // FIX: Returns the Firestore stream for the currently active filter.
-  // Selecting "Wedding" triggers an arrayContains query so only caterers
-  // whose event_types array contains "Wedding" are returned — this is what
-  // was causing the original "0 found" bug (the old code filtered a local
-  // static list that never contained any Firestore data).
-  Stream<QuerySnapshot> _buildStream() {
-    final collection = FirebaseFirestore.instance.collection('caterers');
-
-    if (activeEventFilter == null || activeEventFilter == 'All') {
-      return collection.snapshots();
+    if (selectedType != 'All') {
+      query = query.where('event_type', isEqualTo: selectedType);
     }
 
-    return collection
-        .where('event_types', arrayContains: activeEventFilter)
-        .snapshots();
-  }
-
-  // Lightweight client-side name/location filter applied on top of the
-  // already-filtered Firestore snapshot.
-  List<QueryDocumentSnapshot> _applySearch(List<QueryDocumentSnapshot> docs) {
-    if (_searchQuery.isEmpty) return docs;
-    return docs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final name = (data['name'] as String? ?? '').toLowerCase();
-      final location = (data['location'] as String? ?? '').toLowerCase();
-      return name.contains(_searchQuery) || location.contains(_searchQuery);
-    }).toList();
+    return query.orderBy('created_at', descending: true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      body: SafeArea(
-        child: Column(
-          children: [
-            /// TOP BAR
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Image.asset(
-                        "assets/logo.png",
-                        height: 32,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.restaurant,
-                          color: Colors.deepOrange,
-                          size: 32,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "CelebrEats",
-                        style: GoogleFonts.pacifico(
-                          fontSize: 20,
-                          color: Colors.deepOrange,
-                        ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
+      backgroundColor: Colors.white,
+
+      appBar: AppBar(
+        title: const Text('Browse Packages'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+      ),
+
+      body: Column(
+        children: [
+          /// FILTERS
+          SizedBox(
+            height: 56,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: eventTypes.length,
+              itemBuilder: (context, index) {
+                final event = eventTypes[index];
+
+                final type = event["label"];
+                final emoji = event["emoji"];
+
+                final selected = selectedType == type;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const NotificationsScreen(),
-                        ),
-                      );
+                      setState(() {
+                        selectedType = type;
+                      });
                     },
-                    child: SvgPicture.asset(
-                      "assets/icons/notification_ic.svg",
-                      height: 26,
-                      width: 26,
-                      placeholderBuilder: (_) =>
-                          const Icon(Icons.notifications_none, size: 26),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+
+                      curve: Curves.easeInOut,
+
+                      width: 82,
+
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? Colors.deepOrange.withOpacity(0.12)
+                            : Colors.grey[100],
+
+                        borderRadius: BorderRadius.circular(18),
+
+                        border: Border.all(
+                          color: selected
+                              ? Colors.deepOrange
+                              : Colors.transparent,
+                          width: 1.4,
+                        ),
+
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: Colors.deepOrange.withOpacity(0.15),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : [],
+                      ),
+
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(emoji, style: const TextStyle(fontSize: 28)),
+
+                          const SizedBox(height: 6),
+
+                          Text(
+                            type,
+
+                            style: TextStyle(
+                              fontSize: 12,
+
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+
+                              color: selected
+                                  ? Colors.deepOrange
+                                  : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                );
+              },
+            ),
+          ),
+
+          /// PACKAGE FEED
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _buildQuery().snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final packages = snapshot.data!.docs;
+
+                if (packages.isEmpty) {
+                  return const Center(child: Text('No packages found.'));
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: packages.length,
+                  itemBuilder: (context, index) {
+                    final package = packages[index];
+
+                    final data = package.data() as Map<String, dynamic>;
+
+                    return _PackageCard(
+                      packageId: package.id,
+                      packageName: data['name'] ?? '',
+                      catererId: data['caterer_id'],
+                      catererName: data['caterer_name'] ?? '',
+                      price: data['price'] ?? 0,
+                      eventType: data['event_type'] ?? '',
+                      imageUrl: data['image_url'],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackageCard extends StatelessWidget {
+  final String packageId;
+  final String packageName;
+  final String catererId;
+  final String catererName;
+  final double price;
+  final String eventType;
+  final String? imageUrl;
+
+  const _PackageCard({
+    required this.packageId,
+    required this.packageName,
+    required this.catererId,
+    required this.catererName,
+    required this.price,
+    required this.eventType,
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EventPackagesScreen(catererId: catererId),
+          ),
+        );
+      },
+
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12),
+          ],
+        ),
+
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
               ),
+              child: imageUrl != null
+                  ? Image.network(
+                      imageUrl!,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(height: 200, color: Colors.grey[200]),
             ),
 
-            /// CONTENT
-            // FIX: A single StreamBuilder wraps the entire scrollable section.
-            // Switching filter chips calls setState → _buildStream() returns a
-            // new stream → StreamBuilder rebuilds with the Firestore results.
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _buildStream(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    packageName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
 
-                  final allDocs = snapshot.data?.docs ?? [];
-                  // Apply lightweight client-side name/location search
-                  final filteredDocs = _applySearch(allDocs);
+                  const SizedBox(height: 6),
 
-                  return ListView(
-                    padding: EdgeInsets.zero,
+                  Text(
+                    catererName,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Row(
                     children: [
-                      /// TITLE
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              activeEventFilter != null &&
-                                      activeEventFilter != 'All'
-                                  ? '$activeEventFilter Caterers'
-                                  : 'Browse Catering',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Icon(Icons.tune, color: Colors.grey[700]),
-                          ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
                         ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      /// SEARCH BAR
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: TextField(
-                            controller: searchController,
-                            decoration: const InputDecoration(
-                              hintText: 'Search caterers, events...',
-                              hintStyle: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 14,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.search,
-                                color: Colors.grey,
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
+                        decoration: BoxDecoration(
+                          color: Colors.deepOrange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      /// EVENT TYPE FILTER CHIPS
-                      SizedBox(
-                        height: 40,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: eventTypes.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) {
-                            final event = eventTypes[index];
-                            final label = event['label'] as String;
-                            final isActive =
-                                activeEventFilter == label ||
-                                (label == 'All' && activeEventFilter == null);
-
-                            return GestureDetector(
-                              // FIX: tapping a chip updates activeEventFilter
-                              // which switches _buildStream() to the appropriate
-                              // arrayContains (or unfiltered) Firestore query.
-                              onTap: () => setState(() {
-                                activeEventFilter = label == 'All'
-                                    ? null
-                                    : label;
-                              }),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isActive
-                                      ? Colors.deepOrange
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isActive
-                                        ? Colors.deepOrange
-                                        : Colors.grey[300]!,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      event['emoji'] as String,
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      label,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: isActive
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      /// RESULT COUNT — always reflects the live Firestore data
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          "${filteredDocs.length} caterer${filteredDocs.length == 1 ? '' : 's'} found",
+                          eventType,
                           style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.black54,
-                            fontWeight: FontWeight.w500,
+                            color: Colors.deepOrange,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
 
-                      const SizedBox(height: 10),
+                      const Spacer(),
 
-                      /// CATERER CARDS
-                      if (filteredDocs.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 60),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.search_off,
-                                size: 48,
-                                color: Colors.black26,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                activeEventFilter != null
-                                    ? 'No caterers found for\n"$activeEventFilter"'
-                                    : 'No caterers found.',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.black45,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          child: Column(
-                            children: filteredDocs.map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-
-                              // ── Decode cover image (base64) ───────────
-                              Uint8List? imageBytes;
-                              if (data['cover_photo'] != null &&
-                                  data['cover_photo'].toString().isNotEmpty) {
-                                try {
-                                  final raw = data['cover_photo'].toString();
-                                  final b64 = raw.contains(',')
-                                      ? raw.split(',').last
-                                      : raw;
-                                  imageBytes = base64Decode(b64);
-                                } catch (_) {}
-                              }
-                              if (imageBytes == null) {
-                                final photos = data['menu_photos'];
-                                if (photos is List && photos.isNotEmpty) {
-                                  try {
-                                    final raw = photos.first.toString();
-                                    final b64 = raw.contains(',')
-                                        ? raw.split(',').last
-                                        : raw;
-                                    imageBytes = base64Decode(b64);
-                                  } catch (_) {}
-                                }
-                              }
-
-                              // ── Safe cast of event_types ──────────────
-                              final List<String> eventTypesList =
-                                  (data['event_types'] as List<dynamic>? ?? [])
-                                      .map((e) => e.toString())
-                                      .toList();
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: CatererCard(
-                                  // FIX: pass the Firestore document ID so
-                                  // EventPackagesScreen can query the correct
-                                  // caterer's packages.
-                                  id: doc.id,
-                                  title: data['name'] ?? 'No Name',
-                                  location: data['location'] ?? 'No location',
-                                  imageBytes: imageBytes,
-                                  rating: (data['rating'] as num? ?? 0.0)
-                                      .toDouble(),
-                                  reviewCount:
-                                      (data['review_count'] as num? ?? 0)
-                                          .toInt(),
-                                  eventTypes: eventTypesList,
-                                ),
-                              );
-                            }).toList(),
-                          ),
+                      Text(
+                        '₱${price.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.deepOrange,
                         ),
-
-                      const SizedBox(height: 30),
+                      ),
                     ],
-                  );
-                },
+                  ),
+                ],
               ),
             ),
           ],

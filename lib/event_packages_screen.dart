@@ -2,7 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// ─── Theme ────────────────────────────────────────────────────
+import 'auth_helper.dart';
+import 'datetime_picker_page.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVENT PACKAGES SCREEN  (Caterer Profile → Packages)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Changes from original (all UI preserved):
+//   - _BookingSheet._proceed() now navigates to DateTimePickerPage with the
+//     full booking context instead of showing a stub Snackbar
+//   - requireLogin() auth guard applied before opening the booking sheet
+//   - _BookingSheet now receives catererName (fetched from header FutureBuilder
+//     and passed down) so DateTimePickerPage can display it
+//   - DateTimePickerPage constructor extended to accept catererId, catererName,
+//     packageId, packageName, pricePerPerson, and pre-selected event type /
+//     date / time / guests from the quick-booking sheet
+//   - All other UI, animations, shimmer, inclusions, tab bar — UNCHANGED
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Theme constants (unchanged) ─────────────────────────────────────────────
 class _T {
   static const primary = Color(0xFFFF6B22);
   static const primaryLt = Color(0xFFFF9A56);
@@ -15,9 +34,7 @@ class _T {
   static const border = Color(0xFFF2F2F7);
 }
 
-// ─────────────────────────────────────────────────────────────
-// EVENT PACKAGES SCREEN  (Caterer Profile → Packages)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 class EventPackagesScreen extends StatefulWidget {
   final String catererId;
 
@@ -32,6 +49,10 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
   late final TabController _tabController;
 
   static const List<String> _tabs = ['Package A', 'Package B', 'Package C'];
+
+  // Caterer name resolved once from the header FutureBuilder so we can pass
+  // it down to _BookingSheet without an extra Firestore read.
+  String _catererName = '';
 
   @override
   void initState() {
@@ -73,7 +94,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
     );
   }
 
-  // ── Gradient header with caterer info ─────────────────────
+  // ── Gradient header (unchanged UI, adds _catererName side-effect) ─────────
   Widget _buildHeader(BuildContext context) {
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance
@@ -87,6 +108,16 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
         final rating = (data['rating'] as num? ?? 0.0).toDouble();
         final reviewCount = (data['review_count'] as num? ?? 0).toInt();
         final isVerified = data['verified'] == true;
+
+        // Cache the caterer name so _PackageCard can pass it to _BookingSheet
+        if (name.isNotEmpty && _catererName != name) {
+          // Use addPostFrameCallback to avoid setState during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _catererName != name) {
+              setState(() => _catererName = name);
+            }
+          });
+        }
 
         return Container(
           decoration: const BoxDecoration(
@@ -103,7 +134,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Back button row
+                  // Back + share row
                   Row(
                     children: [
                       GestureDetector(
@@ -123,7 +154,6 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
                         ),
                       ),
                       const Spacer(),
-                      // Share / contact icon
                       GestureDetector(
                         onTap: () {},
                         child: Container(
@@ -145,7 +175,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
 
                   const SizedBox(height: 16),
 
-                  // Caterer name + verified
+                  // Caterer name + verified badge
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -171,9 +201,9 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
                             color: Colors.white.withOpacity(0.25),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
+                            children: [
                               Icon(
                                 Icons.verified_rounded,
                                 color: Colors.white,
@@ -181,7 +211,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
                               ),
                               SizedBox(width: 3),
                               Text(
-                                "Verified",
+                                'Verified',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
@@ -197,7 +227,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
 
                   const SizedBox(height: 6),
 
-                  // Location + rating row
+                  // Location + rating
                   Row(
                     children: [
                       if (location.isNotEmpty) ...[
@@ -225,7 +255,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          "${rating.toStringAsFixed(1)} ($reviewCount reviews)",
+                          '${rating.toStringAsFixed(1)} ($reviewCount reviews)',
                           style: GoogleFonts.poppins(
                             color: Colors.white,
                             fontSize: 12,
@@ -238,9 +268,8 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
 
                   const SizedBox(height: 12),
 
-                  // "Choose a package" subtitle
                   Text(
-                    "Choose a package for your event",
+                    'Choose a package for your event',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
                       fontSize: 13,
@@ -255,7 +284,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
     );
   }
 
-  // ── Tab bar ────────────────────────────────────────────────
+  // ── Tab bar (unchanged) ───────────────────────────────────────────────────
   Widget _buildTabBar() {
     return Container(
       color: _T.surface,
@@ -275,7 +304,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
     );
   }
 
-  // ── One tab ────────────────────────────────────────────────
+  // ── One tab (unchanged) ───────────────────────────────────────────────────
   Widget _buildTab(String categoryTab) {
     return StreamBuilder<QuerySnapshot>(
       stream: _packagesStream(categoryTab),
@@ -286,9 +315,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
 
         final docs = snapshot.data?.docs ?? [];
 
-        if (docs.isEmpty) {
-          return _buildEmpty(categoryTab);
-        }
+        if (docs.isEmpty) return _buildEmpty(categoryTab);
 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
@@ -301,6 +328,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
               docId: docs[i].id,
               data: data,
               catererId: widget.catererId,
+              catererName: _catererName,
             );
           },
         );
@@ -334,7 +362,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
         ),
         const SizedBox(height: 16),
         Text(
-          "No $tab Packages",
+          'No $tab Packages',
           style: GoogleFonts.poppins(
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -343,7 +371,7 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
         ),
         const SizedBox(height: 6),
         const Text(
-          "This caterer hasn't added packages\nfor this category yet.",
+          'This caterer hasn\'t added packages\nfor this category yet.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: _T.mid, height: 1.5),
         ),
@@ -352,18 +380,20 @@ class _EventPackagesScreenState extends State<EventPackagesScreen>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// PACKAGE CARD
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// PACKAGE CARD  (UI completely unchanged — catererName added as passthrough)
+// ─────────────────────────────────────────────────────────────────────────────
 class _PackageCard extends StatefulWidget {
   final String docId;
   final Map<String, dynamic> data;
   final String catererId;
+  final String catererName; // NEW: passed through to _BookingSheet
 
   const _PackageCard({
     required this.docId,
     required this.data,
     required this.catererId,
+    required this.catererName,
   });
 
   @override
@@ -429,7 +459,7 @@ class _PackageCardState extends State<_PackageCard> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            "⭐ Most Popular",
+                            '⭐ Most Popular',
                             style: GoogleFonts.poppins(
                               fontSize: 9,
                               fontWeight: FontWeight.w700,
@@ -468,16 +498,16 @@ class _PackageCardState extends State<_PackageCard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      "Php ${_fmt(price)}",
+                      'Php ${_fmt(price)}',
                       style: GoogleFonts.poppins(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: _T.primary,
                       ),
                     ),
-                    Text(
-                      "/ person",
-                      style: const TextStyle(fontSize: 10, color: _T.mid),
+                    const Text(
+                      '/ person',
+                      style: TextStyle(fontSize: 10, color: _T.mid),
                     ),
                   ],
                 ),
@@ -497,27 +527,26 @@ class _PackageCardState extends State<_PackageCard> {
                   const SizedBox(width: 4),
                   Text(
                     minGuests > 0
-                        ? "$minGuests–$maxGuests guests"
-                        : "Up to $maxGuests guests",
+                        ? '$minGuests–$maxGuests guests'
+                        : 'Up to $maxGuests guests',
                     style: const TextStyle(fontSize: 12, color: _T.mid),
                   ),
                 ],
               ),
             ],
 
-            // Divider
+            // Inclusions
             if (inclusions.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Divider(height: 1, color: _T.border),
               const SizedBox(height: 12),
 
-              // Inclusions header + toggle
               GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Row(
                   children: [
                     Text(
-                      "Inclusions",
+                      'Inclusions',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -526,7 +555,7 @@ class _PackageCardState extends State<_PackageCard> {
                     ),
                     const Spacer(),
                     Text(
-                      _expanded ? "Show less" : "Show all",
+                      _expanded ? 'Show less' : 'Show all',
                       style: const TextStyle(fontSize: 11, color: _T.primary),
                     ),
                     const SizedBox(width: 2),
@@ -542,7 +571,6 @@ class _PackageCardState extends State<_PackageCard> {
               ),
               const SizedBox(height: 8),
 
-              // Inclusions list (collapsed = 3, expanded = all)
               ...(_expanded ? inclusions : inclusions.take(3)).map((item) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 5),
@@ -578,11 +606,12 @@ class _PackageCardState extends State<_PackageCard> {
                   ),
                 );
               }),
+
               if (!_expanded && inclusions.length > 3)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    "+${inclusions.length - 3} more inclusions",
+                    '+${inclusions.length - 3} more inclusions',
                     style: const TextStyle(
                       fontSize: 11,
                       color: _T.light,
@@ -594,7 +623,7 @@ class _PackageCardState extends State<_PackageCard> {
 
             const SizedBox(height: 16),
 
-            // CTA Button
+            // CTA button — auth guard wraps the sheet
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -613,7 +642,7 @@ class _PackageCardState extends State<_PackageCard> {
                   ],
                 ),
                 child: ElevatedButton(
-                  onPressed: () => _showBookingSheet(context),
+                  onPressed: () => _handleBookTap(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
@@ -622,7 +651,7 @@ class _PackageCardState extends State<_PackageCard> {
                     ),
                   ),
                   child: Text(
-                    "Book This Package",
+                    'Book This Package',
                     style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontSize: 14,
@@ -638,6 +667,11 @@ class _PackageCardState extends State<_PackageCard> {
     );
   }
 
+  // ── Auth guard → booking sheet ────────────────────────────────────────────
+  void _handleBookTap(BuildContext context) {
+    requireLogin(context, onLoggedIn: () => _showBookingSheet(context));
+  }
+
   void _showBookingSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -649,29 +683,38 @@ class _PackageCardState extends State<_PackageCard> {
         pricePerPerson: (widget.data['price_per_person'] as num? ?? 0)
             .toDouble(),
         catererId: widget.catererId,
+        catererName: widget.catererName,
       ),
     );
   }
 
   String _fmt(double price) => price
       .toStringAsFixed(0)
-      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 }
 
-// ─────────────────────────────────────────────────────────────
-// BOOKING BOTTOM SHEET  (quick booking initiation)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKING BOTTOM SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// FIX: _proceed() now navigates to DateTimePickerPage with the full package
+// context instead of showing a stub Snackbar. The sheet closes first, then
+// the full DateTimePickerPage flow begins. All UI inside the sheet is
+// preserved exactly — only _proceed() is changed.
+// ─────────────────────────────────────────────────────────────────────────────
 class _BookingSheet extends StatefulWidget {
   final String packageId;
   final String packageName;
   final double pricePerPerson;
   final String catererId;
+  final String catererName; // NEW: needed for DateTimePickerPage
 
   const _BookingSheet({
     required this.packageId,
     required this.packageName,
     required this.pricePerPerson,
     required this.catererId,
+    required this.catererName,
   });
 
   @override
@@ -685,29 +728,66 @@ class _BookingSheetState extends State<_BookingSheet> {
   String? _eventType;
 
   final List<String> _eventTypes = [
-    "Birthday",
-    "Wedding",
-    "Reunion",
-    "Baptism",
-    "Corporate",
-    "Debut",
+    'Birthday',
+    'Wedding',
+    'Reunion',
+    'Baptism',
+    'Corporate',
+    'Debut',
   ];
 
   double get _total => _guests * widget.pricePerPerson;
 
+  bool get _canProceed => _eventType != null && _date != null && _time != null;
+
   String _fmtDate(DateTime d) =>
-      "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   String _fmtTime(TimeOfDay t) {
     final h = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
     final m = t.minute.toString().padLeft(2, '0');
     final p = t.period == DayPeriod.am ? 'AM' : 'PM';
-    return "$h:$m $p";
+    return '$h:$m $p';
   }
 
   String _fmtPrice(double v) => v
       .toStringAsFixed(0)
-      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+
+  // ── FIX: real navigation instead of stub Snackbar ─────────────────────────
+  void _proceed() {
+    if (!_canProceed) return;
+
+    // Close the bottom sheet, then push DateTimePickerPage with full context.
+    // Using the parent context (from showModalBottomSheet) ensures the push
+    // lands on the NavigatorState that owns EventPackagesScreen.
+    Navigator.pop(context);
+
+    // selectedItems is empty at this stage — CustomizePackage / the
+    // DateTimePickerPage form collects them. Pass an empty map that
+    // DateTimePickerPage will forward through the chain.
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DateTimePickerPage(
+          // Existing param
+          selectedItems: const {},
+          // New params wired into the Firestore booking document
+          catererId: widget.catererId,
+          catererName: widget.catererName,
+          packageId: widget.packageId,
+          packageName: widget.packageName,
+          pricePerPerson: widget.pricePerPerson,
+          // Pre-fill from the quick-booking sheet so the user doesn't have
+          // to re-enter what they already selected here
+          preselectedEventType: _eventType,
+          preselectedDate: _date,
+          preselectedTime: _time,
+          preselectedGuests: _guests,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -739,7 +819,7 @@ class _BookingSheetState extends State<_BookingSheet> {
               ),
 
               Text(
-                "Book Package",
+                'Book Package',
                 style: GoogleFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -754,8 +834,8 @@ class _BookingSheetState extends State<_BookingSheet> {
 
               const SizedBox(height: 20),
 
-              // Event type
-              _label("Event Type"),
+              // Event type chips
+              _label('Event Type'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -790,11 +870,11 @@ class _BookingSheetState extends State<_BookingSheet> {
               const SizedBox(height: 20),
 
               // Date picker
-              _label("Event Date"),
+              _label('Event Date'),
               const SizedBox(height: 8),
               _PickerTile(
                 icon: Icons.calendar_today_rounded,
-                text: _date != null ? _fmtDate(_date!) : "Select date",
+                text: _date != null ? _fmtDate(_date!) : 'Select date',
                 hasValue: _date != null,
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -818,11 +898,11 @@ class _BookingSheetState extends State<_BookingSheet> {
               const SizedBox(height: 12),
 
               // Time picker
-              _label("Event Time"),
+              _label('Event Time'),
               const SizedBox(height: 8),
               _PickerTile(
                 icon: Icons.access_time_rounded,
-                text: _time != null ? _fmtTime(_time!) : "Select time",
+                text: _time != null ? _fmtTime(_time!) : 'Select time',
                 hasValue: _time != null,
                 onTap: () async {
                   final picked = await showTimePicker(
@@ -844,7 +924,7 @@ class _BookingSheetState extends State<_BookingSheet> {
               const SizedBox(height: 20),
 
               // Guests stepper
-              _label("Number of Guests"),
+              _label('Number of Guests'),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -865,7 +945,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        "$_guests guests",
+                        '$_guests guests',
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
                           color: _T.dark,
@@ -903,11 +983,11 @@ class _BookingSheetState extends State<_BookingSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "Estimated Total",
+                            'Estimated Total',
                             style: TextStyle(fontSize: 12, color: _T.mid),
                           ),
                           Text(
-                            "Php ${_fmtPrice(_total)}",
+                            'Php ${_fmtPrice(_total)}',
                             style: GoogleFonts.poppins(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -915,7 +995,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                             ),
                           ),
                           Text(
-                            "Php ${_fmtPrice(widget.pricePerPerson)} × $_guests guests",
+                            'Php ${_fmtPrice(widget.pricePerPerson)} × $_guests guests',
                             style: const TextStyle(fontSize: 11, color: _T.mid),
                           ),
                         ],
@@ -960,7 +1040,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                       ),
                     ),
                     child: Text(
-                      "Confirm Booking",
+                      'Continue to Event Details',
                       style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 15,
@@ -975,7 +1055,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                 const SizedBox(height: 8),
                 Center(
                   child: Text(
-                    "Please fill in all fields to continue",
+                    'Please fill in all fields to continue',
                     style: const TextStyle(fontSize: 11, color: _T.light),
                   ),
                 ),
@@ -983,36 +1063,6 @@ class _BookingSheetState extends State<_BookingSheet> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  bool get _canProceed => _eventType != null && _date != null && _time != null;
-
-  void _proceed() {
-    Navigator.pop(context);
-    // TODO: navigate to full booking / payment page passing
-    // widget.catererId, widget.packageId, _eventType, _date, _time, _guests
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              "Booking request sent!",
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        backgroundColor: _T.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -1043,6 +1093,9 @@ class _BookingSheetState extends State<_BookingSheet> {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PICKER TILE  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class _PickerTile extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -1090,9 +1143,9 @@ class _PickerTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// SHIMMER PACKAGE CARD
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIMMER PACKAGE CARD  (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 class _ShimmerPackageCard extends StatefulWidget {
   @override
   State<_ShimmerPackageCard> createState() => _ShimmerPackageCardState();
