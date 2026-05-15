@@ -30,14 +30,16 @@ import 'messages.dart';
 import 'profile_page.dart';
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  final int initialIndex;
+
+  const MainNavigation({super.key, this.initialIndex = 0});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
+  late int _currentIndex;
 
   // ─────────────────────────────────────────────────────────────
   // FUTURE-READY BADGE COUNTS
@@ -67,6 +69,8 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+
+    _currentIndex = widget.initialIndex.clamp(0, 3);
 
     _pages = const [HomePage(), BrowsePage(), MessagePage(), ProfilePage()];
 
@@ -127,7 +131,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 12,
               offset: const Offset(0, -2),
             ),

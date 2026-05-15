@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'bottom_navigation.dart';
+import 'profile_page.dart';
+
 class BookingConfirmedPage extends StatelessWidget {
   final String eventType;
   final DateTime? selectedDate;
@@ -42,6 +45,27 @@ class BookingConfirmedPage extends StatelessWidget {
       buffer.write(parts[i]);
     }
     return buffer.toString();
+  }
+
+  void _goHome(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainNavigation()),
+      (_) => false,
+    );
+  }
+
+  void _goToMessages(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 2)),
+      (_) => false,
+    );
+  }
+
+  void _goToMyBookings(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MyBookingsPage()),
+      (_) => false,
+    );
   }
 
   @override
@@ -93,7 +117,7 @@ class BookingConfirmedPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -167,7 +191,7 @@ class BookingConfirmedPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
@@ -210,9 +234,7 @@ class BookingConfirmedPage extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Navigate to bookings page
-                  },
+                  onPressed: () => _goToMyBookings(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepOrange,
                     foregroundColor: Colors.white, // ← fixes purple text
@@ -239,9 +261,7 @@ class BookingConfirmedPage extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () {
-                    // TODO: Navigate to chat
-                  },
+                  onPressed: () => _goToMessages(context),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.deepOrange,
                     padding: const EdgeInsets.symmetric(vertical: 15),
@@ -268,8 +288,7 @@ class BookingConfirmedPage extends StatelessWidget {
 
               // ── Back to Home ──
               GestureDetector(
-                onTap: () =>
-                    Navigator.of(context).popUntil((route) => route.isFirst),
+                onTap: () => _goHome(context),
                 child: const Text(
                   "Back to Home",
                   style: TextStyle(

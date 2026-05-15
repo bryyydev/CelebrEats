@@ -913,8 +913,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
         imageQuality: 50,
         maxWidth: 400,
       );
-      if (picked != null && mounted)
+      if (picked != null && mounted) {
         setState(() => _pickedImage = File(picked.path));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1197,7 +1198,16 @@ class MyBookingsPage extends StatelessWidget {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+                return;
+              }
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfilePage()),
+              );
+            },
           ),
           title: const Text(
             'My Bookings',

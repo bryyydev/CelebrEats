@@ -369,6 +369,29 @@ class DatabaseService {
     await _db.collection('notifications').doc(notifId).update({'read': true});
   }
 
+  /// Mark multiple notification documents as read
+  Future<void> markNotificationsRead(Iterable<String> notifIds) async {
+    final ids = notifIds.toList();
+    if (ids.isEmpty) return;
+
+    final batch = _db.batch();
+    for (final id in ids) {
+      batch.update(_db.collection('notifications').doc(id), {'read': true});
+    }
+    await batch.commit();
+  }
+
+  Future<void> deleteNotification(String notifId) async {
+    await _db.collection('notifications').doc(notifId).delete();
+  }
+
+  Future<void> restoreNotification(
+    String notifId,
+    Map<String, dynamic> data,
+  ) async {
+    await _db.collection('notifications').doc(notifId).set(data);
+  }
+
   /// Push a notification to any user by their UID
   Future<void> sendNotification({
     required String userId,

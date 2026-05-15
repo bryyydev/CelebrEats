@@ -1,10 +1,10 @@
-// TOP BAR IS NOW SCROLLABLE — it lives at index 0 of the ListView,
-// so "unread notification" and "Mark all as read" scroll with the list.
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'services/database_service.dart';
+
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({Key? key}) : super(key: key);
+  const NotificationsScreen({super.key});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -12,105 +12,33 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final Color orange = const Color(0xFFFF8A00);
+  final DatabaseService _database = DatabaseService();
 
-  List<Map<String, dynamic>> notifications = [
-    {
-      "id": 1,
-      "title": "Booking Confirmed!",
-      "body":
-          "Your booking with Manang Anna's Catering for Dec 28 has been confirmed.",
-      "time": "2 min ago",
-      "unread": true,
-      "icon": Icons.calendar_month,
-      "iconBg": const Color(0xFFE9F7EF),
-      "iconColor": const Color(0xFF2ECC71),
-    },
-    {
-      "id": 2,
-      "title": "New Message",
-      "body":
-          "Xian's Catering Services sent you a message about your upcoming event.",
-      "time": "5 hours ago",
-      "unread": true,
-      "icon": Icons.chat_bubble_outline,
-      "iconBg": const Color(0xFFEAF4FF),
-      "iconColor": const Color(0xFF3498DB),
-    },
-    {
-      "id": 3,
-      "title": "20% Off Holiday Special!",
-      "body": "Book any wedding package this month and get 20% discount.",
-      "time": "1 day ago",
-      "unread": false,
-      "icon": Icons.card_giftcard,
-      "iconBg": const Color(0xFFFFF3E0),
-      "iconColor": const Color(0xFFFF8A00),
-    },
-    {
-      "id": 4,
-      "title": "Leave a Review",
-      "body":
-          "How was your experience with the Handaan Express? Share your feedback!",
-      "time": "2 days ago",
-      "unread": false,
-      "icon": Icons.star,
-      "iconBg": const Color(0xFFFFFDE7),
-      "iconColor": const Color(0xFFFFC107),
-    },
-    {
-      "id": 5,
-      "title": "Payment Received",
-      "body":
-          "Payment of Php 45,000 for your birthday celebration has been received.",
-      "time": "3 days ago",
-      "unread": false,
-      "icon": Icons.check_circle,
-      "iconBg": const Color(0xFFE9F7EF),
-      "iconColor": const Color(0xFF27AE60),
-    },
-    {
-      "id": 6,
-      "title": "Welcome to CelebrEats!",
-      "body": "Start exploring caterers for your next celebration.",
-      "time": "1 week ago",
-      "unread": false,
-      "icon": Icons.info_outline,
-      "iconBg": const Color(0xFFF3F3F3),
-      "iconColor": const Color(0xFF9E9E9E),
-    },
-  ];
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  int get _unreadCount =>
-      notifications.where((n) => n["unread"] == true).length;
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-
-  void _markAllAsRead() {
-    setState(() {
-      for (final n in notifications) {
-        n["unread"] = false;
-      }
-    });
+  int _unreadCount(List<QueryDocumentSnapshot> docs) {
+    return docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return data['read'] != true;
+    }).length;
   }
 
-  void _markAsRead(int id) {
-    setState(() {
-      final index = notifications.indexWhere((n) => n["id"] == id);
-      if (index != -1) notifications[index]["unread"] = false;
-    });
+  Future<void> _markAllAsRead(List<QueryDocumentSnapshot> docs) async {
+    final unreadIds = docs
+        .where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['read'] != true;
+        })
+        .map((doc) => doc.id);
+
+    await _database.markNotificationsRead(unreadIds);
   }
 
-  void _deleteNotification(int id) {
-    final removedItem = Map<String, dynamic>.from(
-      notifications.firstWhere((n) => n["id"] == id),
-    );
-    final removedIndex = notifications.indexWhere((n) => n["id"] == id);
+  Future<void> _markAsRead(String id) async {
+    await _database.markNotificationRead(id);
+  }
 
-    setState(() {
-      notifications.removeWhere((n) => n["id"] == id);
-    });
+  Future<void> _deleteNotification(String id, Map<String, dynamic> data) async {
+    await _database.deleteNotification(id);
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -121,17 +49,58 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         action: SnackBarAction(
           label: "Undo",
           textColor: orange,
-          onPressed: () {
-            setState(() {
-              notifications.insert(removedIndex, removedItem);
-            });
-          },
+          onPressed: () => _database.restoreNotification(id, data),
         ),
       ),
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  String _timeAgo(dynamic value) {
+    if (value is! Timestamp) return "Just now";
+
+    final diff = DateTime.now().difference(value.toDate());
+    if (diff.inMinutes < 1) return "Just now";
+    if (diff.inMinutes < 60) return "${diff.inMinutes} min ago";
+    if (diff.inHours < 24) return "${diff.inHours} hours ago";
+    if (diff.inDays == 1) return "Yesterday";
+    if (diff.inDays < 7) return "${diff.inDays} days ago";
+    return "${(diff.inDays / 7).floor()} weeks ago";
+  }
+
+  ({IconData icon, Color bg, Color color}) _styleForType(String? type) {
+    switch (type) {
+      case 'booking':
+        return (
+          icon: Icons.calendar_month,
+          bg: const Color(0xFFE9F7EF),
+          color: const Color(0xFF2ECC71),
+        );
+      case 'message':
+        return (
+          icon: Icons.chat_bubble_outline,
+          bg: const Color(0xFFEAF4FF),
+          color: const Color(0xFF3498DB),
+        );
+      case 'payment':
+        return (
+          icon: Icons.check_circle,
+          bg: const Color(0xFFE9F7EF),
+          color: const Color(0xFF27AE60),
+        );
+      case 'promo':
+        return (
+          icon: Icons.card_giftcard,
+          bg: const Color(0xFFFFF3E0),
+          color: const Color(0xFFFF8A00),
+        );
+      default:
+        return (
+          icon: Icons.info_outline,
+          bg: const Color(0xFFF3F3F3),
+          color: const Color(0xFF9E9E9E),
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -154,29 +123,48 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
         centerTitle: false,
       ),
-      body: notifications.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              // index 0 → scrollable top bar; rest → notification cards
-              itemCount: notifications.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) return _buildScrollableTopBar();
-                return _buildNotificationCard(notifications[index - 1]);
-              },
-            ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _database.getNotifications(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return _buildMessageState(
+              icon: Icons.error_outline,
+              title: "Notifications unavailable",
+              subtitle: "Please try again later.",
+            );
+          }
+
+          final docs = snapshot.data?.docs ?? [];
+          if (docs.isEmpty) return _buildEmptyState();
+
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            itemCount: docs.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) return _buildScrollableTopBar(docs);
+
+              final doc = docs[index - 1];
+              final data = doc.data() as Map<String, dynamic>;
+              return _buildNotificationCard(doc.id, data);
+            },
+          );
+        },
+      ),
     );
   }
 
-  // ── Scrollable top bar (scrolls with the list) ────────────────────────────
+  Widget _buildScrollableTopBar(List<QueryDocumentSnapshot> docs) {
+    final unreadCount = _unreadCount(docs);
 
-  Widget _buildScrollableTopBar() {
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Orange badge + "unread notification"
           Row(
             children: [
               Container(
@@ -188,7 +176,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  "$_unreadCount",
+                  "$unreadCount",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -207,14 +195,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             ],
           ),
-
-          // Mark all as read
           GestureDetector(
-            onTap: _unreadCount > 0 ? _markAllAsRead : null,
+            onTap: unreadCount > 0 ? () => _markAllAsRead(docs) : null,
             child: Text(
               "Mark all as read",
               style: TextStyle(
-                color: _unreadCount > 0 ? orange : Colors.grey,
+                color: unreadCount > 0 ? orange : Colors.grey,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -225,13 +211,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ── Notification card ─────────────────────────────────────────────────────
-
-  Widget _buildNotificationCard(Map<String, dynamic> item) {
-    final bool isUnread = item["unread"] == true;
+  Widget _buildNotificationCard(String id, Map<String, dynamic> item) {
+    final isUnread = item["read"] != true;
+    final style = _styleForType(item["type"] as String?);
 
     return GestureDetector(
-      onTap: () => _markAsRead(item["id"]),
+      onTap: () => _markAsRead(id),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
@@ -243,7 +228,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -252,30 +237,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Circle icon
             Container(
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: item["iconBg"],
+                color: style.bg,
                 shape: BoxShape.circle,
               ),
-              child: Icon(item["icon"], color: item["iconColor"], size: 26),
+              child: Icon(style.icon, color: style.color, size: 26),
             ),
             const SizedBox(width: 12),
-
-            // Content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title + unread dot
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Text(
-                          item["title"],
+                          item["title"] as String? ?? "Notification",
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: isUnread
@@ -298,10 +279,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-
-                  // Body
                   Text(
-                    item["body"],
+                    item["body"] as String? ?? "",
                     style: const TextStyle(
                       fontSize: 13,
                       color: Colors.black54,
@@ -309,20 +288,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-
-                  // Time + delete icon
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        item["time"],
+                        _timeAgo(item["timestamp"]),
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.grey,
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => _deleteNotification(item["id"]),
+                        onTap: () => _deleteNotification(id, item),
                         child: const Padding(
                           padding: EdgeInsets.only(left: 8),
                           child: Icon(
@@ -343,21 +320,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // ── Empty state ───────────────────────────────────────────────────────────
-
   Widget _buildEmptyState() {
+    return _buildMessageState(
+      icon: Icons.notifications_off_outlined,
+      title: "No notifications yet",
+      subtitle: "You're all caught up!",
+    );
+  }
+
+  Widget _buildMessageState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.notifications_off_outlined,
-            size: 64,
-            color: Colors.grey.shade300,
-          ),
+          Icon(icon, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           Text(
-            "No notifications yet",
+            title,
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey.shade500,
@@ -366,7 +349,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            "You're all caught up!",
+            subtitle,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
           ),
         ],

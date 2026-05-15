@@ -93,6 +93,21 @@ class BookingService {
       'created_at': FieldValue.serverTimestamp(),
     });
 
+    try {
+      await _db.collection('notifications').add({
+        'user_id': user.uid,
+        'type': 'booking',
+        'title': 'Booking Confirmed!',
+        'body':
+            'Your booking with $catererName for $formattedDate has been confirmed.',
+        'read': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'booking_id': docRef.id,
+      });
+    } on FirebaseException {
+      // Notification writes should not block a successful booking.
+    }
+
     return docRef.id;
   }
 
