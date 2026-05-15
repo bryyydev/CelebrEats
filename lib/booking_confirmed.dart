@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'bottom_navigation.dart';
-import 'profile_page.dart';
+import 'my_booking.dart';
 
 class BookingConfirmedPage extends StatelessWidget {
   final String eventType;

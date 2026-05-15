@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
 class RealTimeMap extends StatefulWidget {
-  const RealTimeMap({super.key});
+  final ValueChanged<LatLng>? onLocationChanged;
+  final double zoom;
+
+  const RealTimeMap({super.key, this.onLocationChanged, this.zoom = 15.0});
 
   @override
   State<RealTimeMap> createState() => _RealTimeMapState();
@@ -13,7 +18,9 @@ class RealTimeMap extends StatefulWidget {
 class _RealTimeMapState extends State<RealTimeMap> {
   LatLng? _currentLocation;
   final MapController _mapController = MapController();
+  StreamSubscription<Position>? _positionSubscription;
   bool _isLoading = true;
+  bool _hasMovedMap = false;
 
   @override
   void initState() {
@@ -53,33 +60,43 @@ class _RealTimeMapState extends State<RealTimeMap> {
       _currentLocation = LatLng(position.latitude, position.longitude);
       _isLoading = false;
     });
+    widget.onLocationChanged?.call(_currentLocation!);
 
     // Start listening for real-time updates
     _listenToLocation();
   }
 
   void _listenToLocation() {
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // Update map every 5 meters
-      ),
-    ).listen((Position position) {
-      if (mounted) {
-        setState(() {
-          _currentLocation = LatLng(position.latitude, position.longitude);
-          _mapController.move(_currentLocation!, 15.0);
+    _positionSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5, // Update map every 5 meters
+          ),
+        ).listen((Position position) {
+          if (mounted) {
+            setState(() {
+              _currentLocation = LatLng(position.latitude, position.longitude);
+            });
+            _mapController.move(_currentLocation!, widget.zoom);
+            widget.onLocationChanged?.call(_currentLocation!);
+          }
         });
-      }
-    });
   }
 
   void _showError(String message) {
     if (mounted) {
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -88,11 +105,23 @@ class _RealTimeMapState extends State<RealTimeMap> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_currentLocation == null) {
+      return const Center(
+        child: Icon(Icons.location_off, color: Colors.grey, size: 40),
+      );
+    }
+
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
         initialCenter: _currentLocation ?? const LatLng(0, 0),
-        initialZoom: 15.0,
+        initialZoom: widget.zoom,
+        onMapReady: () {
+          if (_currentLocation != null && !_hasMovedMap) {
+            _hasMovedMap = true;
+            _mapController.move(_currentLocation!, widget.zoom);
+          }
+        },
       ),
       children: [
         TileLayer(

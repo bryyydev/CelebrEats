@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/booking_service.dart'; // Ensure this path is correct
 import 'booking_confirmed.dart'; // Ensure this path is correct
 
@@ -202,11 +203,17 @@ class _PaymentPageState extends State<PaymentPage> {
       backgroundColor: const Color(0xFFF2F2F2),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
+        surfaceTintColor: Colors.white,
+        elevation: 2,
+        shadowColor: Colors.black26,
         leading: const BackButton(color: Colors.black),
-        title: const Text(
+        title: Text(
           'Payment',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: GoogleFonts.pacifico(
+            color: Colors.black,
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       body: Column(
@@ -222,53 +229,141 @@ class _PaymentPageState extends State<PaymentPage> {
                       children: [
                         const Text(
                           'Booking Summary',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         _summaryRow('Caterer', widget.catererName),
                         _summaryRow('Package', widget.packageName),
-                        _summaryRow('Event', widget.eventName),
+                        _summaryRow('Event Type', widget.eventType),
                         _summaryRow('Date', formattedDate),
-                        const Divider(),
-                        _summaryRow(
-                          'Down Payment',
-                          'Php ${_formatAmount(widget.downPayment)}',
+                        _summaryRow('Guests', widget.guests.toString()),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Payment Method',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _paymentOption(
+                          value: 'credit',
+                          icon: Icons.credit_card,
+                          title: 'Credit /\nDebit Card',
+                          subtitle: 'Visa\nMastercard\nJCB',
+                          recommended: true,
+                        ),
+                        _paymentOption(
+                          value: 'gcash',
+                          icon: Icons.wallet_outlined,
+                          title: 'Gcash',
+                          subtitle: 'Pay with GCash e-wallet',
+                        ),
+                        _paymentOption(
+                          value: 'maya',
+                          icon: Icons.account_balance_wallet_outlined,
+                          title: 'Maya',
+                          subtitle: 'Pay with Maya e-wallet',
+                        ),
+                        _paymentOption(
+                          value: 'bank',
+                          icon: Icons.account_balance_outlined,
+                          title: 'Bank Transfer',
+                          subtitle: 'BDO, BPI, Metrobank, etc',
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _paymentOption(
-                    value: 'credit',
-                    icon: Icons.credit_card,
-                    title: 'Card',
-                    subtitle: 'Visa/Mastercard',
-                    recommended: true,
-                  ),
-                  _paymentOption(
-                    value: 'gcash',
-                    icon: Icons.account_balance_wallet,
-                    title: 'GCash',
-                    subtitle: 'E-wallet',
-                  ),
-                  const SizedBox(height: 12),
                   if (selectedPayment == 'credit')
                     _card(
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const Text(
+                            'Card Details',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Card Number',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 6),
                           _inputField(
                             controller: _cardNumberController,
-                            hint: 'Card Number',
+                            hint: '1213 4563 3455 6785',
                             keyboardType: TextInputType.number,
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Cardholder Name',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 6),
                           _inputField(
                             controller: _cardholderController,
-                            hint: 'Cardholder Name',
+                            hint: 'Juan Dela Cruz',
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Expiry Date',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    _inputField(
+                                      controller: _expiryController,
+                                      hint: 'MM/YY',
+                                      keyboardType: TextInputType.datetime,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'CVV',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    _inputField(
+                                      controller: _cvvController,
+                                      hint: '123',
+                                      keyboardType: TextInputType.number,
+                                      obscureText: true,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
+                  const SizedBox(height: 12),
+                  _totalBanner(),
                   const SizedBox(height: 20),
                   Row(
                     children: const [
@@ -296,44 +391,98 @@ class _PaymentPageState extends State<PaymentPage> {
 
   Widget _payButton() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _isLoading ? null : _onPay,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepOrange,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFDDDDDD))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isLoading ? null : _onPay,
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.credit_card, color: Colors.white, size: 18),
+            label: Text(
+              _isLoading
+                  ? 'Processing...'
+                  : 'Pay Php ${_formatAmount(_amountToPay)}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6400),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
             ),
           ),
-          child: _isLoading
-              ? const CircularProgressIndicator(color: Colors.white)
-              : Text(
-                  'Pay Php ${_formatAmount(_amountToPay)}',
-                  style: const TextStyle(color: Colors.white),
-                ),
         ),
+      ),
+    );
+  }
+
+  Widget _totalBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF6400),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Total Amount',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            'Php ${_formatAmount(_amountToPay)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // --- Helpers ---
   Widget _summaryRow(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.only(bottom: 9),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label),
+        Text(label, style: const TextStyle(fontSize: 13)),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             value,
             textAlign: TextAlign.right,
             softWrap: true,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
         ),
       ],
@@ -351,20 +500,106 @@ class _PaymentPageState extends State<PaymentPage> {
     return GestureDetector(
       onTap: () => setState(() => selectedPayment = value),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: selected ? const Color(0xFFFFF1E9) : Colors.white,
+          borderRadius: BorderRadius.circular(9),
           border: Border.all(
-            color: selected ? Colors.deepOrange : Colors.grey.shade200,
+            color: selected ? const Color(0xFFFF6400) : Colors.grey.shade300,
+            width: selected ? 1.4 : 1,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: selected ? Colors.deepOrange : Colors.grey),
-            const SizedBox(width: 10),
-            Text(title),
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected
+                      ? const Color(0xFFFF6400)
+                      : Colors.grey.shade300,
+                  width: 1.3,
+                ),
+              ),
+              child: selected
+                  ? Center(
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF6400),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFFFF6400)
+                    : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(
+                icon,
+                color: selected ? Colors.white : Colors.black54,
+                size: 25,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      if (recommended)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD8C7),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Recommended',
+                            style: TextStyle(
+                              color: Color(0xFFFF6400),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 12, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -375,16 +610,23 @@ class _PaymentPageState extends State<PaymentPage> {
     required TextEditingController controller,
     required String hint,
     TextInputType keyboardType = TextInputType.text,
+    bool obscureText = false,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      obscureText: obscureText,
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: const Color(0xFFF4F4F4),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(7),
           borderSide: BorderSide.none,
         ),
       ),
@@ -392,11 +634,15 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   Widget _card({required Widget child}) => Container(
+    width: double.infinity,
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
-      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+      border: Border.all(color: Colors.black12),
+      boxShadow: const [
+        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+      ],
     ),
     child: child,
   );

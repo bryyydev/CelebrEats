@@ -241,7 +241,6 @@ class DatabaseService {
     return _db
         .collection('bookings')
         .where('user_id', isEqualTo: currentUserId)
-        .orderBy('created_at', descending: true)
         .snapshots();
   }
 

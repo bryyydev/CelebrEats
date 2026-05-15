@@ -16,6 +16,7 @@ import 'notifications_screen.dart';
 import 'payment_methods_page.dart';
 import 'help_support_page.dart';
 import 'terms_conditions_page.dart';
+import 'my_booking.dart' as booking_pages;
 
 // ─────────────────────────────────────────────────────────────
 // AUTH DIALOG
@@ -519,7 +520,9 @@ class _ProfilePageState extends State<ProfilePage> {
               title: "My Booking",
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const MyBookingsPage()),
+                MaterialPageRoute(
+                  builder: (_) => const booking_pages.MyBookingsPage(),
+                ),
               ),
             ),
             _MenuTile(
@@ -688,7 +691,9 @@ class _ProfilePageState extends State<ProfilePage> {
           onTap: () => guard(
             () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const MyBookingsPage()),
+              MaterialPageRoute(
+                builder: (_) => const booking_pages.MyBookingsPage(),
+              ),
             ),
           ),
         ),

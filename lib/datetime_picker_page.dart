@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
+import 'real_time_map.dart';
 import 'review_order_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +69,8 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
   late TimeOfDay? selectedTime;
   late String eventType;
   late int numberOfGuests;
+  LatLng? _eventMapLocation;
+  bool _isResolvingLocation = false;
 
   final List<String> eventTypes = [
     'Birthday',
@@ -163,6 +168,63 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
     final now = DateTime.now();
     final dt = DateTime(now.year, now.month, now.day, time.hour, time.minute);
     return DateFormat('h:mm a').format(dt);
+  }
+
+  Future<void> _useCurrentMapLocation() async {
+    final point = _eventMapLocation;
+    if (point == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Waiting for your current map location.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isResolvingLocation = true);
+
+    try {
+      final places = await placemarkFromCoordinates(
+        point.latitude,
+        point.longitude,
+      );
+      final address = places.isNotEmpty
+          ? _formatPlacemark(places.first)
+          : '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+
+      if (!mounted) return;
+      setState(() {
+        if (_venueController.text.trim().isEmpty) {
+          _venueController.text = 'Pinned venue';
+        }
+        _locationController.text = address;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_venueController.text.trim().isEmpty) {
+          _venueController.text = 'Pinned venue';
+        }
+        _locationController.text =
+            '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+      });
+    } finally {
+      if (mounted) setState(() => _isResolvingLocation = false);
+    }
+  }
+
+  String _formatPlacemark(Placemark place) {
+    final parts = [
+      place.name,
+      place.street,
+      place.subLocality,
+      place.locality,
+      place.administrativeArea,
+      place.country,
+    ].where((part) => part != null && part.trim().isNotEmpty).cast<String>();
+
+    return parts.toSet().join(', ');
   }
 
   // ── FIX: passes full booking context to ReviewOrderPage ──────────────────
@@ -295,6 +357,9 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
                     ),
                     const SizedBox(height: 16),
 
+                    _buildVenueMapSection(),
+                    const SizedBox(height: 16),
+
                     // Location
                     _buildModernTextField(
                       controller: _locationController,
@@ -334,7 +399,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 10,
                   offset: const Offset(0, -3),
                 ),
@@ -383,6 +448,80 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
 
   // ── Widget helpers (all unchanged from original) ──────────────────────────
 
+  Widget _buildVenueMapSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: RealTimeMap(
+                zoom: 16,
+                onLocationChanged: (point) {
+                  if (mounted) {
+                    setState(() => _eventMapLocation = point);
+                  }
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.my_location,
+                  color: Colors.deepOrange,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _eventMapLocation == null
+                        ? 'Finding your current location...'
+                        : 'Use live map location as venue address',
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _isResolvingLocation
+                      ? null
+                      : _useCurrentMapLocation,
+                  child: _isResolvingLocation
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Use'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildModernTextField({
     required TextEditingController controller,
     required String label,
@@ -398,7 +537,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -436,14 +575,14 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: DropdownButtonFormField<String>(
-        value: eventType,
+        initialValue: eventType,
         decoration: InputDecoration(
           labelText: 'Event Type',
           prefixIcon: const Icon(Icons.event, color: Colors.deepOrange),
@@ -488,7 +627,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -500,7 +639,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: value != null
-                    ? Colors.deepOrange.withOpacity(0.1)
+                    ? Colors.deepOrange.withValues(alpha: 0.1)
                     : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -557,7 +696,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -571,7 +710,7 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.deepOrange.withOpacity(0.1),
+                  color: Colors.deepOrange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(

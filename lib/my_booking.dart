@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'bottom_navigation.dart';
+import 'services/database_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -342,7 +346,7 @@ class _SwitchTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: Colors.orange.withOpacity(0.15),
+        backgroundColor: Colors.orange.withValues(alpha: 0.15),
         child: SvgPicture.asset(
           iconPath,
           width: 22,
@@ -354,7 +358,7 @@ class _SwitchTile extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: Switch(
         value: value,
-        activeColor: Colors.orange,
+        activeThumbColor: Colors.orange,
         onChanged: onChanged,
       ),
     );
@@ -364,90 +368,189 @@ class _SwitchTile extends StatelessWidget {
 /// MY BOOKINGS PAGE AND COMPONENTS
 
 class MyBookingsPage extends StatelessWidget {
-  const MyBookingsPage({Key? key}) : super(key: key);
+  const MyBookingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     const Color primaryOrange = Color(0xFFFF6B22);
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black),
-            onPressed: () {
-              Navigator.pop(context); // Navigates back to the profile page
-            },
-          ),
-          title: const Text(
-            'My Bookings',
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
+    return StreamBuilder<QuerySnapshot>(
+      stream: DatabaseService().getUserBookings(),
+      builder: (context, snapshot) {
+        final docs = _sortedBookings(snapshot.data?.docs ?? []);
+        final upcoming = docs.where(_isUpcomingBooking).toList();
+        final past = docs.where((doc) => !_isUpcomingBooking(doc)).toList();
+
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            backgroundColor: const Color(0xFFF8F9FA),
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => _goBack(context),
+              ),
+              title: const Text(
+                'My Bookings',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              centerTitle: false,
+              bottom: TabBar(
+                indicatorColor: primaryOrange,
+                labelColor: primaryOrange,
+                unselectedLabelColor: Colors.grey,
+                tabs: [
+                  Tab(text: 'Upcoming (${upcoming.length})'),
+                  Tab(text: 'Past (${past.length})'),
+                ],
+              ),
             ),
+            body: _buildBody(snapshot, upcoming, past),
           ),
-          centerTitle: false,
-          bottom: const TabBar(
-            indicatorColor: primaryOrange,
-            labelColor: primaryOrange,
-            unselectedLabelColor: Colors.grey,
-            tabs: [
-              Tab(text: 'Upcoming (2)'),
-              Tab(text: 'Past (0)'),
-            ],
-          ),
-        ),
-        body: const TabBarView(
-          children: [UpcomingBookingsTab(), PastBookingsTab()],
-        ),
-      ),
+        );
+      },
     );
   }
-}
 
-class UpcomingBookingsTab extends StatelessWidget {
-  const UpcomingBookingsTab({Key? key}) : super(key: key);
+  Widget _buildBody(
+    AsyncSnapshot<QuerySnapshot> snapshot,
+    List<QueryDocumentSnapshot> upcoming,
+    List<QueryDocumentSnapshot> past,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: const [
-        BookingCard(
-          title: "Manang Anna's Catering",
-          subtitle: "Birthday",
-          date: "2024-03-15 at 8:00 am",
-          location: "San Vicente East, Urdaneta City, Pang.",
-          guests: "100 guests",
-          amount: "Php 50,000",
-          status: "pending",
-          statusBgColor: Color(0xFFFFF4D6),
-          statusTextColor: Color(0xFFFFB020),
-        ),
-        SizedBox(height: 16),
-        BookingCard(
-          title: "Xian's Catering Services",
-          subtitle: "Wedding Package",
-          date: "2024-03-15 at 8:00 am",
-          location: "Grand Ballroom, Downtown Hotel",
-          guests: "120 guests",
-          amount: "Php 70,000",
-          status: "confirmed",
-          statusBgColor: Color(0xFFD1F4CE),
-          statusTextColor: Color(0xFF28A745),
-        ),
+    if (snapshot.hasError && upcoming.isEmpty && past.isEmpty) {
+      return _BookingEmptyState(
+        icon: Icons.error_outline,
+        title: 'Could not load bookings',
+        subtitle: _bookingErrorMessage(snapshot.error),
+      );
+    }
+
+    return TabBarView(
+      children: [
+        BookingsList(docs: upcoming, emptyPast: false),
+        BookingsList(docs: past, emptyPast: true),
       ],
     );
   }
+
+  void _goBack(BuildContext context) {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 3)),
+    );
+  }
+
+  bool _isUpcomingBooking(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    return !{'completed', 'cancelled', 'declined'}.contains(status);
+  }
+
+  List<QueryDocumentSnapshot> _sortedBookings(
+    List<QueryDocumentSnapshot> docs,
+  ) {
+    final sorted = [...docs];
+    sorted.sort((a, b) {
+      final aDate = _sortDate(a.data() as Map<String, dynamic>);
+      final bDate = _sortDate(b.data() as Map<String, dynamic>);
+      return bDate.compareTo(aDate);
+    });
+    return sorted;
+  }
+
+  DateTime _sortDate(Map<String, dynamic> data) {
+    final createdAt = data['created_at'] ?? data['createdAt'];
+    if (createdAt is Timestamp) return createdAt.toDate();
+
+    final eventDate = data['event_date'] ?? data['eventDate'];
+    if (eventDate is Timestamp) return eventDate.toDate();
+
+    final date = DateTime.tryParse((data['date'] ?? '').toString());
+    return date ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _bookingErrorMessage(Object? error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('permission-denied')) {
+      return 'Your account does not have permission to read these bookings yet.';
+    }
+    if (text.contains('index')) {
+      return 'Firestore needs an index for this bookings query.';
+    }
+    return 'Please check your connection and try again.';
+  }
 }
 
-class PastBookingsTab extends StatelessWidget {
-  const PastBookingsTab({Key? key}) : super(key: key);
+class BookingsList extends StatelessWidget {
+  final List<QueryDocumentSnapshot> docs;
+  final bool emptyPast;
+
+  const BookingsList({super.key, required this.docs, required this.emptyPast});
+
+  @override
+  Widget build(BuildContext context) {
+    if (docs.isEmpty) {
+      return _BookingEmptyState(
+        icon: emptyPast ? Icons.history : Icons.event_busy,
+        title: emptyPast ? 'No Past Booking' : 'No Upcoming Booking',
+        subtitle: emptyPast
+            ? 'Your completed events will appear here'
+            : 'Your confirmed bookings will appear here',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16.0),
+      itemCount: docs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        final data = docs[index].data() as Map<String, dynamic>;
+        return BookingCard.fromData(
+          data,
+          onChat: () => _goToMessages(context),
+          onViewDetails: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => BookingDetailsPage(data: data)),
+          ),
+        );
+      },
+    );
+  }
+
+  void _goToMessages(BuildContext context) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const MainNavigation(initialIndex: 2)),
+      (_) => false,
+    );
+  }
+}
+
+class _BookingEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _BookingEmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -461,21 +564,21 @@ class PastBookingsTab extends StatelessWidget {
               color: Colors.grey.shade200,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.history, size: 40, color: Colors.grey),
+            child: Icon(icon, size: 40, color: Colors.grey),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'No Past Booking',
-            style: TextStyle(
+          Text(
+            title,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Your completed events will appear here',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
         ],
       ),
@@ -493,9 +596,11 @@ class BookingCard extends StatelessWidget {
   final String status;
   final Color statusBgColor;
   final Color statusTextColor;
+  final VoidCallback onChat;
+  final VoidCallback onViewDetails;
 
   const BookingCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.subtitle,
     required this.date,
@@ -505,7 +610,80 @@ class BookingCard extends StatelessWidget {
     required this.status,
     required this.statusBgColor,
     required this.statusTextColor,
-  }) : super(key: key);
+    required this.onChat,
+    required this.onViewDetails,
+  });
+
+  factory BookingCard.fromData(
+    Map<String, dynamic> data, {
+    required VoidCallback onChat,
+    required VoidCallback onViewDetails,
+  }) {
+    final status = (data['status'] ?? 'pending').toString();
+    final colors = _statusColors(status);
+    final date = _formatDate(data);
+    final total = _asDouble(data['total'] ?? data['total_amount']);
+    final guests = data['guests'] ?? data['numberOfGuests'] ?? 0;
+
+    return BookingCard(
+      title: (data['caterer_name'] ?? data['catererName'] ?? 'Caterer')
+          .toString(),
+      subtitle: (data['event_type'] ?? data['eventType'] ?? 'Event').toString(),
+      date: date,
+      location: (data['location'] ?? data['venue'] ?? 'No location').toString(),
+      guests: '$guests guests',
+      amount: 'Php ${_formatAmount(total)}',
+      status: status,
+      statusBgColor: colors.$1,
+      statusTextColor: colors.$2,
+      onChat: onChat,
+      onViewDetails: onViewDetails,
+    );
+  }
+
+  static (Color, Color) _statusColors(String status) {
+    switch (status.toLowerCase()) {
+      case 'confirmed':
+      case 'accepted':
+        return (const Color(0xFFD1F4CE), const Color(0xFF28A745));
+      case 'completed':
+        return (const Color(0xFFEAF4FF), const Color(0xFF3498DB));
+      case 'cancelled':
+      case 'declined':
+        return (const Color(0xFFFFE6E6), const Color(0xFFE53935));
+      default:
+        return (const Color(0xFFFFF4D6), const Color(0xFFFFB020));
+    }
+  }
+
+  static String _formatDate(Map<String, dynamic> data) {
+    final date = data['date'];
+    final time = data['event_time'] ?? data['eventTime'];
+    if (date != null && time != null) return '$date at $time';
+    if (date != null) return date.toString();
+
+    final timestamp = data['event_date'] ?? data['eventDate'];
+    if (timestamp is Timestamp) {
+      final value = timestamp.toDate();
+      return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    }
+    return 'No date';
+  }
+
+  static double _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static String _formatAmount(double amount) {
+    final parts = amount.toStringAsFixed(0).split('');
+    final buffer = StringBuffer();
+    for (int i = 0; i < parts.length; i++) {
+      if (i > 0 && (parts.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(parts[i]);
+    }
+    return buffer.toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -593,18 +771,18 @@ class BookingCard extends StatelessWidget {
                 const Spacer(),
                 Container(
                   decoration: BoxDecoration(
-                    color: primaryOrange.withOpacity(0.1),
+                    color: primaryOrange.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.chat_bubble_outline, size: 20),
                     color: primaryOrange,
-                    onPressed: () {},
+                    onPressed: onChat,
                   ),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: () {},
+                  onPressed: onViewDetails,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryOrange,
                     elevation: 0,
@@ -645,5 +823,141 @@ class BookingCard extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class BookingDetailsPage extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const BookingDetailsPage({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = (data['status'] ?? 'pending').toString();
+    final colors = BookingCard._statusColors(status);
+    final total = BookingCard._asDouble(data['total'] ?? data['total_amount']);
+    final downPayment = BookingCard._asDouble(
+      data['down_payment'] ?? data['downPayment'],
+    );
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Booking Details',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _text('caterer_name', fallback: 'Caterer'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.$1,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          color: colors.$2,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _detail('Package', _text('package_name', fallback: 'Package')),
+                _detail('Event', _text('event_name', fallback: 'Event')),
+                _detail('Type', _text('event_type', fallback: 'Event')),
+                _detail('Date & Time', BookingCard._formatDate(data)),
+                _detail('Venue', _text('venue', fallback: 'No venue')),
+                _detail('Location', _text('location', fallback: 'No location')),
+                _detail('Guests', '${data['guests'] ?? 0} guests'),
+                _detail(
+                  'Contact',
+                  _text('contact_number', fallback: 'No contact number'),
+                ),
+                const Divider(height: 28),
+                _detail('Total', 'Php ${BookingCard._formatAmount(total)}'),
+                _detail(
+                  'Down Payment',
+                  'Php ${BookingCard._formatAmount(downPayment)}',
+                ),
+                _detail('Payment', _text('payment_status', fallback: 'unpaid')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detail(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: const TextStyle(color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _text(String key, {required String fallback}) {
+    return (data[key] ?? data[_camelCase(key)] ?? fallback).toString();
+  }
+
+  String _camelCase(String key) {
+    final parts = key.split('_');
+    if (parts.isEmpty) return key;
+    return parts.first +
+        parts.skip(1).map((part) {
+          if (part.isEmpty) return part;
+          return part[0].toUpperCase() + part.substring(1);
+        }).join();
   }
 }
