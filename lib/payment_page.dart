@@ -1,25 +1,9 @@
-import 'package:celebreats/services/booking_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'services/booking_service.dart';
-import 'booking_confirmed.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PAYMENT PAGE
-// ─────────────────────────────────────────────────────────────────────────────
-// Changes from original:
-//   - Added booking context params: catererId, catererName, packageId,
-//     packageName, eventName, eventTime, venue, location, contactNumber,
-//     selectedItems, pricePerPerson, downPayment.
-//   - Booking summary card now shows real catererName and packageName.
-//   - _onPay() saves booking to Firestore via BookingService, then navigates
-//     to BookingConfirmedPage passing the new bookingId.
-//   - Added loading state while saving so the button shows a spinner.
-//   - All UI layout/styling unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
+import 'services/booking_service.dart'; // Ensure this path is correct
+import 'booking_confirmed.dart'; // Ensure this path is correct
 
 class PaymentPage extends StatefulWidget {
-  // ── Original params ───────────────────────────────────────────────────────
   final int guests;
   final String eventType;
   final DateTime? selectedDate;
@@ -28,7 +12,6 @@ class PaymentPage extends StatefulWidget {
   final Set<String> selectedDecorations;
   final Set<String> selectedExtras;
 
-  // ── New: booking context ──────────────────────────────────────────────────
   final String catererId;
   final String catererName;
   final String packageId;
@@ -44,7 +27,6 @@ class PaymentPage extends StatefulWidget {
 
   const PaymentPage({
     super.key,
-    // Original
     required this.guests,
     required this.eventType,
     required this.selectedDate,
@@ -52,7 +34,6 @@ class PaymentPage extends StatefulWidget {
     required this.totalAmount,
     required this.selectedDecorations,
     required this.selectedExtras,
-    // New
     required this.catererId,
     required this.catererName,
     required this.packageId,
@@ -137,7 +118,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 backgroundColor: Colors.deepOrange,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(8.0),
                 ),
               ),
               child: const Text('Log In'),
@@ -151,7 +132,6 @@ class _PaymentPageState extends State<PaymentPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Check for date conflicts first
       if (widget.selectedDate != null) {
         final conflict = await BookingService.instance.hasConflict(
           catererId: widget.catererId,
@@ -161,9 +141,7 @@ class _PaymentPageState extends State<PaymentPage> {
           setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'This caterer is already booked on that date. Please choose another date.',
-              ),
+              content: Text('This caterer is already booked on that date.'),
               backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
             ),
@@ -172,8 +150,7 @@ class _PaymentPageState extends State<PaymentPage> {
         }
       }
 
-      // Save booking to Firestore
-      final bookingId = await BookingService.instance.createBooking(
+      await BookingService.instance.createBooking(
         catererId: widget.catererId,
         catererName: widget.catererName,
         packageId: widget.packageId,
@@ -192,9 +169,6 @@ class _PaymentPageState extends State<PaymentPage> {
         downPayment: widget.downPayment,
       );
 
-      // Mark down payment paid
-      await BookingService.instance.markDownPaymentPaid(bookingId);
-
       if (!mounted) return;
 
       Navigator.push(
@@ -205,7 +179,7 @@ class _PaymentPageState extends State<PaymentPage> {
             selectedDate: widget.selectedDate,
             selectedTime: widget.selectedTime,
             guests: widget.guests,
-            totalAmount: widget.totalAmount,
+            totalAmount: widget.downPayment,
           ),
         ),
       );
@@ -215,7 +189,6 @@ class _PaymentPageState extends State<PaymentPage> {
         SnackBar(
           content: Text('Failed to confirm booking: $e'),
           backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {
@@ -233,12 +206,7 @@ class _PaymentPageState extends State<PaymentPage> {
         leading: const BackButton(color: Colors.black),
         title: const Text(
           'Payment',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w700,
-            fontStyle: FontStyle.italic,
-            fontSize: 20,
-          ),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
       body: Column(
@@ -248,311 +216,124 @@ class _PaymentPageState extends State<PaymentPage> {
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
-                  // ── Booking Summary ──
                   _card(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Booking Summary',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
+                          style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
                         _summaryRow('Caterer', widget.catererName),
                         _summaryRow('Package', widget.packageName),
                         _summaryRow('Event', widget.eventName),
-                        _summaryRow('Event Type', widget.eventType),
                         _summaryRow('Date', formattedDate),
-                        _summaryRow('Guests', widget.guests.toString()),
-                        const Divider(height: 20),
+                        const Divider(),
                         _summaryRow(
-                          'Down Payment (30%)',
+                          'Down Payment',
                           'Php ${_formatAmount(widget.downPayment)}',
                         ),
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
-                  // ── Payment Method ──
-                  _card(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Payment Method',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _paymentOption(
-                          value: 'credit',
-                          icon: Icons.credit_card,
-                          title: 'Credit /\nDebit Card',
-                          subtitle: 'Visa\nMastercard\nJCB',
-                          recommended: true,
-                        ),
-                        const SizedBox(height: 10),
-                        _paymentOption(
-                          value: 'gcash',
-                          icon: Icons.receipt_long_outlined,
-                          title: 'Gcash',
-                          subtitle: 'Pay with GCash e-wallet',
-                        ),
-                        const SizedBox(height: 10),
-                        _paymentOption(
-                          value: 'maya',
-                          icon: Icons.account_balance_wallet_outlined,
-                          title: 'Maya',
-                          subtitle: 'Pay with Maya e-wallet',
-                        ),
-                        const SizedBox(height: 10),
-                        _paymentOption(
-                          value: 'bank',
-                          icon: Icons.account_balance_outlined,
-                          title: 'Bank Transfer',
-                          subtitle: 'BDO, BPI, Metrobank, etc',
-                        ),
-                      ],
-                    ),
+                  _paymentOption(
+                    value: 'credit',
+                    icon: Icons.credit_card,
+                    title: 'Card',
+                    subtitle: 'Visa/Mastercard',
+                    recommended: true,
                   ),
-
+                  _paymentOption(
+                    value: 'gcash',
+                    icon: Icons.account_balance_wallet,
+                    title: 'GCash',
+                    subtitle: 'E-wallet',
+                  ),
                   const SizedBox(height: 12),
-
-                  // ── Card Details ──
                   if (selectedPayment == 'credit')
                     _card(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Card Details',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'Card Number',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
                           _inputField(
                             controller: _cardNumberController,
-                            hint: '1213 4563 3455 6785',
+                            hint: 'Card Number',
                             keyboardType: TextInputType.number,
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Cardholder Name',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 10),
                           _inputField(
                             controller: _cardholderController,
-                            hint: 'Juan Dela Cruz',
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Expiry Date',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    _inputField(
-                                      controller: _expiryController,
-                                      hint: 'MM/YY',
-                                      keyboardType: TextInputType.datetime,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'CVV',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    _inputField(
-                                      controller: _cvvController,
-                                      hint: '123',
-                                      keyboardType: TextInputType.number,
-                                      obscure: true,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            hint: 'Cardholder Name',
                           ),
                         ],
                       ),
                     ),
-
-                  const SizedBox(height: 12),
-
-                  // ── Total Amount banner ──
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.deepOrange,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Total Amount',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Php ${_formatAmount(widget.totalAmount)}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 22,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.credit_card,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // ── Security note ──
+                  const SizedBox(height: 20),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      Icon(Icons.lock_outline, size: 16, color: Colors.grey),
+                      Icon(Icons.lock, size: 16, color: Colors.grey),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Your payment information is encrypted and secure. We never store your card details.',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                          'Secure encrypted payment.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
           ),
-
-          // ── Pay Button ──
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            color: Colors.white,
-            child: SafeArea(
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _onPay,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.credit_card, color: Colors.white),
-                  label: Text(
-                    _isLoading
-                        ? 'Processing...'
-                        : 'Pay Php ${_formatAmount(widget.totalAmount)}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    elevation: 0,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _payButton(),
         ],
       ),
     );
   }
 
-  // ── Widget helpers (unchanged from original) ──────────────────────────────
+  double get _amountToPay => widget.downPayment;
 
+  Widget _payButton() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _isLoading ? null : _onPay,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepOrange,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+          child: _isLoading
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Text(
+                  'Pay Php ${_formatAmount(_amountToPay)}',
+                  style: const TextStyle(color: Colors.white),
+                ),
+        ),
+      ),
+    );
+  }
+
+  // --- Helpers ---
   Widget _summaryRow(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
+    padding: const EdgeInsets.only(bottom: 8),
     child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-        Flexible(
+        Text(label),
+        const SizedBox(width: 12),
+        Expanded(
           child: Text(
             value,
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
-              color: Colors.black87,
-            ),
+            softWrap: true,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
       ],
@@ -570,104 +351,20 @@ class _PaymentPageState extends State<PaymentPage> {
     return GestureDetector(
       onTap: () => setState(() => selectedPayment = value),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected ? Colors.deepOrange : Colors.grey.shade200,
-            width: selected ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? Colors.deepOrange : Colors.grey.shade400,
-                  width: 2,
-                ),
-              ),
-              child: selected
-                  ? Center(
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.deepOrange,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 14),
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: selected ? Colors.deepOrange : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                color: selected ? Colors.white : Colors.grey.shade600,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: selected ? Colors.deepOrange : Colors.black87,
-                        ),
-                      ),
-                      if (recommended) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFE0CC),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Recommended',
-                            style: TextStyle(
-                              color: Colors.deepOrange,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            Icon(icon, color: selected ? Colors.deepOrange : Colors.grey),
+            const SizedBox(width: 10),
+            Text(title),
           ],
         ),
       ),
@@ -678,37 +375,28 @@ class _PaymentPageState extends State<PaymentPage> {
     required TextEditingController controller,
     required String hint,
     TextInputType keyboardType = TextInputType.text,
-    bool obscure = false,
-  }) => TextField(
-    controller: controller,
-    keyboardType: keyboardType,
-    obscureText: obscure,
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.grey.shade100,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _card({required Widget child}) => Container(
-    width: double.infinity,
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.04),
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ],
+      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
     ),
     child: child,
   );

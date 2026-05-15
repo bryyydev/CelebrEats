@@ -12,23 +12,35 @@ class BookingService {
     required String catererId,
     required DateTime date,
   }) async {
-    final snap = await _db
-        .collection('bookings')
-        .where('catererId', isEqualTo: catererId)
-        .where('status', whereIn: ['pending', 'confirmed'])
-        .get();
+    try {
+      final snap = await _db
+          .collection('bookings')
+          .where('caterer_id', isEqualTo: catererId)
+          .where('status', whereIn: ['pending', 'confirmed', 'accepted'])
+          .get();
 
-    for (final doc in snap.docs) {
-      final ts = doc['eventDate'];
-      if (ts == null) continue;
-      final existing = (ts as Timestamp).toDate();
-      if (existing.year == date.year &&
-          existing.month == date.month &&
-          existing.day == date.day) {
-        return true;
+      final requestedDate = _formatDate(date);
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final existingDate = data['date'];
+        if (existingDate == requestedDate) return true;
+
+        final ts = data['event_date'];
+        if (ts is Timestamp) {
+          final existing = ts.toDate();
+          if (existing.year == date.year &&
+              existing.month == date.month &&
+              existing.day == date.day) {
+            return true;
+          }
+        }
       }
+      return false;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return false;
+      rethrow;
     }
-    return false;
   }
 
   Future<String> createBooking({
@@ -52,28 +64,33 @@ class BookingService {
     final user = _auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
+    final formattedDate = _formatDate(eventDate);
     final docRef = await _db.collection('bookings').add({
-      'userId': user.uid,
-      'userEmail': user.email ?? '',
-      'catererId': catererId,
-      'catererName': catererName,
-      'packageId': packageId,
-      'packageName': packageName,
-      'pricePerPerson': pricePerPerson,
-      'eventName': eventName,
-      'eventType': eventType,
-      'eventDate': Timestamp.fromDate(eventDate),
-      'eventTime': eventTime,
+      'user_id': user.uid,
+      'user_email': user.email ?? '',
+      'customer_name': user.displayName ?? user.email ?? 'Customer',
+      'caterer_id': catererId,
+      'caterer_name': catererName,
+      'package_id': packageId,
+      'package_name': packageName,
+      'price_per_person': pricePerPerson,
+      'event_name': eventName,
+      'event_type': eventType,
+      'event_date': Timestamp.fromDate(eventDate),
+      'date': formattedDate,
+      'event_time': eventTime,
       'venue': venue,
       'location': location,
-      'contactNumber': contactNumber,
-      'numberOfGuests': numberOfGuests,
-      'selectedItems': selectedItems,
-      'totalAmount': totalAmount,
-      'downPayment': downPayment,
-      'paymentStatus': 'unpaid',
+      'contact_number': contactNumber,
+      'guests': numberOfGuests,
+      'selected_items': selectedItems,
+      'total': totalAmount,
+      'total_amount': totalAmount,
+      'down_payment': downPayment,
+      'payment_status': 'down_payment_paid',
       'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
+      'paid_at': FieldValue.serverTimestamp(),
+      'created_at': FieldValue.serverTimestamp(),
     });
 
     return docRef.id;
@@ -85,5 +102,11 @@ class BookingService {
       'status': 'confirmed',
       'paidAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 }
