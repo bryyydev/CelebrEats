@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'bottom_navigation.dart';
 import 'services/database_service.dart';
@@ -392,13 +393,9 @@ class MyBookingsPage extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back, color: Colors.black),
                 onPressed: () => _goBack(context),
               ),
-              title: const Text(
+              title: Text(
                 'My Bookings',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: GoogleFonts.pacifico(color: Colors.black, fontSize: 28),
               ),
               centerTitle: false,
               bottom: TabBar(

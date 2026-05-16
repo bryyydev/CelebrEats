@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'services/database_service.dart';
 
@@ -109,19 +110,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        surfaceTintColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           "Notification",
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+          style: GoogleFonts.pacifico(color: Colors.black, fontSize: 26),
         ),
         centerTitle: false,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFE6E6E6), width: 1),
+              ),
+            ),
+          ),
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _database.getNotifications(),
@@ -257,10 +265,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       Expanded(
                         child: Text(
                           item["title"] as String? ?? "Notification",
-                          style: TextStyle(
-                            fontSize: 15,
+                          style: GoogleFonts.pacifico(
+                            fontSize: 18,
                             fontWeight: isUnread
-                                ? FontWeight.bold
+                                ? FontWeight.w700
                                 : FontWeight.w600,
                             color: Colors.black,
                           ),

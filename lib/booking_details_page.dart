@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'review_order_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,9 +219,9 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Event Details',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+          style: GoogleFonts.pacifico(color: Colors.black, fontSize: 26),
         ),
       ),
       body: Column(
