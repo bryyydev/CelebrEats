@@ -4,17 +4,17 @@
 // ─────────────────────────────────────────────────────────────
 // Improvements added while PRESERVING your architecture:
 //
-// ✅ Preserved premium UI/UX
-// ✅ Preserved StreamBuilder architecture
-// ✅ Preserved animations
-// ✅ Preserved highlighted search
-// ✅ Added search debounce
-// ✅ Added image memory optimization
-// ✅ Added lazy list rendering
-// ✅ Added loading skeletons
-// ✅ Reduced unnecessary rebuilds
-// ✅ Added stream limits for scalability
-// ✅ Added mounted-safe debounce cleanup
+//✅ Preserved premium UI/UX
+//✅ Preserved StreamBuilder architecture
+//✅ Preserved animations
+//✅ Preserved highlighted search
+//✅ Added search debounce
+//✅ Added image memory optimization
+//✅ Added lazy list rendering
+//✅ Added loading skeletons
+//✅ Reduced unnecessary rebuilds
+//✅ Added stream limits for scalability
+//✅ Added mounted-safe debounce cleanup
 // ✅ Improved memory handling
 // ✅ Better Firestore scalability preparation
 //
@@ -31,9 +31,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import 'browse.dart';
 import 'event_packages_screen.dart';
+import 'favorites_manager.dart';
 import 'notifications_screen.dart';
 
 class HomePage extends StatefulWidget {
@@ -438,17 +440,23 @@ class _HomePageState extends State<HomePage> {
 
                           try {
                             final cover = data['cover_photo'];
+                            if (cover != null) {
+                              final raw = cover.toString().trim();
+                              if (raw.isNotEmpty) {
+                                // Handles both:
+                                // - plain base64: "AAAA..."
+                                // - data-URI: "data:image/...;base64,AAAA..."
+                                final b64 = raw.contains(',')
+                                    ? raw.split(',').last
+                                    : raw;
 
-                            if (cover != null && cover.toString().isNotEmpty) {
-                              final raw = cover.toString();
-
-                              final b64 = raw.contains(',')
-                                  ? raw.split(',').last
-                                  : raw;
-
-                              imageBytes = base64Decode(b64);
+                                final cleaned = b64.replaceAll('\n', '').trim();
+                                imageBytes = base64Decode(cleaned);
+                              }
                             }
-                          } catch (_) {}
+                          } catch (_) {
+                            imageBytes = null;
+                          }
 
                           final eventTypes =
                               (data['event_types'] as List<dynamic>? ?? [])
@@ -461,6 +469,8 @@ class _HomePageState extends State<HomePage> {
                               id: doc.id,
                               title: data['name'] ?? 'No Name',
                               location: data['location'] ?? '',
+                              coverPhotoRaw:
+                                  data['cover_photo']?.toString() ?? '',
                               imageBytes: imageBytes,
                               rating: (data['rating'] as num? ?? 0).toDouble(),
                               reviewCount: (data['review_count'] as num? ?? 0)
@@ -568,6 +578,11 @@ class CatererCard extends StatelessWidget {
   final String id;
   final String title;
   final String location;
+
+  /// Raw Firestore cover_photo string (base64 or data-URI).
+  /// Saved into Favorites so FavoritePage can display the correct image.
+  final String coverPhotoRaw;
+
   final Uint8List? imageBytes;
   final double rating;
   final int reviewCount;
@@ -579,6 +594,7 @@ class CatererCard extends StatelessWidget {
     required this.id,
     required this.title,
     required this.location,
+    required this.coverPhotoRaw,
     required this.imageBytes,
     required this.rating,
     required this.reviewCount,
@@ -586,8 +602,28 @@ class CatererCard extends StatelessWidget {
     required this.searchQuery,
   });
 
+  Package _asFavoritePackage() {
+    // FavoritesManager/ FavoritePage are built around the Package model (asset-based images).
+    // We create a lightweight “favorite package” representation from the caterer card.
+    return Package(
+      id: id,
+      image: coverPhotoRaw,
+      title: title,
+      rating: rating,
+      price: '₱0',
+      oldPrice: '₱0',
+      guests: location.isNotEmpty ? location : 'Guests',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final favoritesManager = Provider.of<FavoritesManager>(
+      context,
+      listen: false,
+    );
+    final isFavorite = favoritesManager.isFavorite(id);
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -618,26 +654,78 @@ class CatererCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(18),
               ),
-              child: imageBytes != null
-                  ? Image.memory(
-                      imageBytes!,
-                      height: 210,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.medium,
-                    )
-                  : Container(
-                      height: 210,
-                      color: Colors.grey[200],
-                      child: const Center(
-                        child: Icon(
-                          Icons.restaurant,
-                          size: 48,
-                          color: Colors.grey,
+              child: Stack(
+                children: [
+                  imageBytes != null
+                      ? Image.memory(
+                          imageBytes!,
+                          height: 210,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.medium,
+                        )
+                      : Container(
+                          height: 210,
+                          color: Colors.grey[200],
+                          child: const Center(
+                            child: Icon(
+                              Icons.restaurant,
+                              size: 48,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () {
+                          favoritesManager.toggleFavorite(_asFavoritePackage());
+
+                          final snackText = favoritesManager.isFavorite(id)
+                              ? 'Added to favorites'
+                              : 'Removed from favorites';
+
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(snackText)));
+                        },
+                        child: Consumer<FavoritesManager>(
+                          builder: (context, manager, _) {
+                            final favorite = manager.isFavorite(id);
+                            return Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.95),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                favorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: Colors.red,
+                                size: 22,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
+                  ),
+                ],
+              ),
             ),
 
             // ───────────────── CONTENT ─────────────────

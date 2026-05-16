@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'favorites_manager.dart';
@@ -146,28 +148,75 @@ class FavoritePage extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                Image.asset(
-                  package.image,
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
+                Builder(
+                  builder: (context) {
+                    final raw = package.image;
+                    final looksLikeBase64 =
+                        raw.contains('base64,') || raw.trim().length > 100;
+
+                    final String? b64 = looksLikeBase64
+                        ? (raw.contains(',') ? raw.split(',').last : raw).trim()
+                        : null;
+
+                    if (b64 != null && b64.isNotEmpty) {
+                      try {
+                        final cleaned = b64.replaceAll('\n', '').trim();
+                        final bytes = base64Decode(cleaned);
+
+                        return Image.memory(
+                          bytes,
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              height: 180,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.orange.shade200,
+                                    Colors.orange.shade400,
+                                  ],
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.cake,
+                                size: 60,
+                                color: Colors.white,
+                              ),
+                            );
+                          },
+                        );
+                      } catch (_) {
+                        // Fall through to asset below.
+                      }
+                    }
+
+                    return Image.asset(
+                      raw,
                       height: 180,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.orange.shade200,
-                            Colors.orange.shade400,
-                          ],
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.cake,
-                        size: 60,
-                        color: Colors.white,
-                      ),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 180,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.orange.shade200,
+                                Colors.orange.shade400,
+                              ],
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.cake,
+                            size: 60,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -229,9 +278,11 @@ class FavoritePage extends StatelessWidget {
                   style: TextStyle(color: Colors.black54, fontSize: 13),
                 ),
                 const SizedBox(height: 3),
-                const Text(
+                Text(
                   "Complete celebration with food and decorations.",
-                  style: TextStyle(
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Colors.black54,
                     fontSize: 12,
                     height: 1.3,
@@ -239,67 +290,79 @@ class FavoritePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 15),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              package.price,
-                              style: const TextStyle(
-                                color: Colors.deepOrange,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                package.price,
+                                style: const TextStyle(
+                                  color: Colors.deepOrange,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              package.oldPrice,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                                decoration: TextDecoration.lineThrough,
+                              const SizedBox(width: 8),
+                              Text(
+                                package.oldPrice,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                  decoration: TextDecoration.lineThrough,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          package.guests,
-                          style: const TextStyle(
-                            color: Colors.black54,
-                            fontSize: 12,
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            package.guests,
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CustomizePackage(
-                              catererId: package.id.toString(),
-                              catererName: package
-                                  .title, // FIXED: Added missing catererName
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 160,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CustomizePackage(
+                                catererId: package.id.toString(),
+                                catererName: package.title,
+                              ),
                             ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepOrange,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                        child: const Text(
+                          "Customize Package",
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                      child: const Text("Customize Package"),
                     ),
                   ],
                 ),

@@ -463,18 +463,25 @@ class _BrowsePageState extends State<BrowsePage> {
 
                             try {
                               final cover = data['cover_photo'];
+                              if (cover != null) {
+                                final raw = cover.toString().trim();
+                                if (raw.isNotEmpty) {
+                                  // Handles both:
+                                  // - plain base64: "AAAA..."
+                                  // - data-URI: "data:image/...;base64,AAAA..."
+                                  final b64 = raw.contains(',')
+                                      ? raw.split(',').last
+                                      : raw;
 
-                              if (cover != null &&
-                                  cover.toString().isNotEmpty) {
-                                final raw = cover.toString();
-
-                                final b64 = raw.contains(',')
-                                    ? raw.split(',').last
-                                    : raw;
-
-                                imageBytes = base64Decode(b64);
+                                  final cleaned = b64
+                                      .replaceAll('\n', '')
+                                      .trim();
+                                  imageBytes = base64Decode(cleaned);
+                                }
                               }
-                            } catch (_) {}
+                            } catch (_) {
+                              imageBytes = null;
+                            }
 
                             final types =
                                 (data['event_types'] as List<dynamic>? ?? [])
@@ -490,6 +497,9 @@ class _BrowsePageState extends State<BrowsePage> {
                                 title: data['name'] ?? 'No Name',
 
                                 location: data['location'] ?? '',
+
+                                coverPhotoRaw:
+                                    data['cover_photo']?.toString() ?? '',
 
                                 imageBytes: imageBytes,
 
