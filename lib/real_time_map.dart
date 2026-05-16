@@ -7,9 +7,18 @@ import 'package:geolocator/geolocator.dart';
 
 class RealTimeMap extends StatefulWidget {
   final ValueChanged<LatLng>? onLocationChanged;
+
+  /// If true, user can tap on the map to set a pin (overrides the marker point).
+  final bool allowPin;
+
   final double zoom;
 
-  const RealTimeMap({super.key, this.onLocationChanged, this.zoom = 15.0});
+  const RealTimeMap({
+    super.key,
+    this.onLocationChanged,
+    this.allowPin = true,
+    this.zoom = 15.0,
+  });
 
   @override
   State<RealTimeMap> createState() => _RealTimeMapState();
@@ -17,10 +26,15 @@ class RealTimeMap extends StatefulWidget {
 
 class _RealTimeMapState extends State<RealTimeMap> {
   LatLng? _currentLocation;
+  LatLng? _pinnedLocation;
+
   final MapController _mapController = MapController();
   StreamSubscription<Position>? _positionSubscription;
+
   bool _isLoading = true;
   bool _hasMovedMap = false;
+
+  LatLng? get _markerLocation => _pinnedLocation ?? _currentLocation;
 
   @override
   void initState() {
@@ -74,12 +88,18 @@ class _RealTimeMapState extends State<RealTimeMap> {
             distanceFilter: 5, // Update map every 5 meters
           ),
         ).listen((Position position) {
-          if (mounted) {
-            setState(() {
-              _currentLocation = LatLng(position.latitude, position.longitude);
-            });
-            _mapController.move(_currentLocation!, widget.zoom);
-            widget.onLocationChanged?.call(_currentLocation!);
+          if (!mounted) return;
+
+          final updated = LatLng(position.latitude, position.longitude);
+
+          setState(() {
+            _currentLocation = updated;
+          });
+
+          // Only auto-move/emit when user hasn't pinned a location yet.
+          if (_pinnedLocation == null) {
+            _mapController.move(updated, widget.zoom);
+            widget.onLocationChanged?.call(updated);
           }
         });
   }
@@ -91,6 +111,17 @@ class _RealTimeMapState extends State<RealTimeMap> {
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _handlePin(LatLng point) {
+    if (!mounted) return;
+
+    setState(() {
+      _pinnedLocation = point;
+    });
+
+    _mapController.move(point, widget.zoom);
+    widget.onLocationChanged?.call(point);
   }
 
   @override
@@ -114,14 +145,19 @@ class _RealTimeMapState extends State<RealTimeMap> {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        initialCenter: _currentLocation ?? const LatLng(0, 0),
+        initialCenter: _markerLocation ?? const LatLng(0, 0),
         initialZoom: widget.zoom,
         onMapReady: () {
-          if (_currentLocation != null && !_hasMovedMap) {
+          if (_markerLocation != null && !_hasMovedMap) {
             _hasMovedMap = true;
-            _mapController.move(_currentLocation!, widget.zoom);
+            _mapController.move(_markerLocation!, widget.zoom);
           }
         },
+
+        // Tap-to-pin
+        onTap: widget.allowPin
+            ? (tapPosition, latLng) => _handlePin(latLng)
+            : null,
       ),
       children: [
         TileLayer(
@@ -130,9 +166,9 @@ class _RealTimeMapState extends State<RealTimeMap> {
         ),
         MarkerLayer(
           markers: [
-            if (_currentLocation != null)
+            if (_markerLocation != null)
               Marker(
-                point: _currentLocation!,
+                point: _markerLocation!,
                 width: 50,
                 height: 50,
                 child: const Icon(

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'review_order_page.dart';
+import 'real_time_map.dart';
+
+import 'package:latlong2/latlong.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATE TIME PICKER PAGE
@@ -62,6 +65,8 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
   final TextEditingController _venueController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
+
+  LatLng? _pinnedLatLng;
 
   late DateTime? selectedDate;
   late TimeOfDay? selectedTime;
@@ -158,6 +163,15 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
         _locationController.text.isNotEmpty &&
         _contactController.text.isNotEmpty &&
         numberOfGuests > 0;
+  }
+
+  void _usePinnedLocation(LatLng point) {
+    setState(() => _pinnedLatLng = point);
+
+    // Since we don't have geocoding in this flow, store coordinates in the field.
+    // This still satisfies "user can pin the location" without extra services.
+    _locationController.text =
+        '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
   }
 
   String _formatTime(TimeOfDay time) {
@@ -301,8 +315,126 @@ class _DateTimePickerPageState extends State<DateTimePickerPage> {
                       controller: _locationController,
                       label: 'Location/Address',
                       icon: Icons.location_on,
-                      hint: 'Enter complete address',
+                      hint:
+                          'Pin the location on the map (coordinates will be saved)',
                       maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Real-time map with pin-to-select
+                    SizedBox(
+                      height: 260,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          color: Colors.white,
+                          child: Stack(
+                            children: [
+                              RealTimeMap(
+                                allowPin: true,
+                                zoom: 15.0,
+                                onLocationChanged: (latLng) {
+                                  _usePinnedLocation(latLng);
+                                },
+                              ),
+
+                              // Overlay prompt + pinned coordinates (optional)
+                              Positioned(
+                                left: 12,
+                                right: 12,
+                                bottom: 12,
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.95),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.06),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        'Tap on the map to pin your location',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        _pinnedLatLng == null
+                                            ? 'No pin selected yet'
+                                            : 'Pinned: ${_pinnedLatLng!.latitude.toStringAsFixed(6)}, ${_pinnedLatLng!.longitude.toStringAsFixed(6)}',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.deepOrange,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+
+                                      // "Use this pin" button is helpful if future logic changes
+                                      // (and avoids accidental selection if user taps briefly).
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: _pinnedLatLng == null
+                                              ? null
+                                              : () {
+                                                  _usePinnedLocation(
+                                                    _pinnedLatLng!,
+                                                  );
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                        'Location pinned!',
+                                                      ),
+                                                      backgroundColor:
+                                                          Colors.deepOrange,
+                                                    ),
+                                                  );
+                                                },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.deepOrange,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'Use this pin',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
 

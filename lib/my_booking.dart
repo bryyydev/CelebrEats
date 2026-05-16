@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'bottom_navigation.dart';
+import 'real_time_map.dart';
 import 'services/database_service.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -823,18 +825,27 @@ class BookingCard extends StatelessWidget {
   }
 }
 
-class BookingDetailsPage extends StatelessWidget {
+class BookingDetailsPage extends StatefulWidget {
   final Map<String, dynamic> data;
 
   const BookingDetailsPage({super.key, required this.data});
 
   @override
+  State<BookingDetailsPage> createState() => _BookingDetailsPageState();
+}
+
+class _BookingDetailsPageState extends State<BookingDetailsPage> {
+  LatLng? _livePoint;
+
+  @override
   Widget build(BuildContext context) {
-    final status = (data['status'] ?? 'pending').toString();
+    final status = (widget.data['status'] ?? 'pending').toString();
     final colors = BookingCard._statusColors(status);
-    final total = BookingCard._asDouble(data['total'] ?? data['total_amount']);
+    final total = BookingCard._asDouble(
+      widget.data['total'] ?? widget.data['total_amount'],
+    );
     final downPayment = BookingCard._asDouble(
-      data['down_payment'] ?? data['downPayment'],
+      widget.data['down_payment'] ?? widget.data['downPayment'],
     );
 
     return Scaffold(
@@ -896,13 +907,44 @@ class BookingDetailsPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
+
+                // Real-time map section (live)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    height: 180,
+                    width: double.infinity,
+                    child: RealTimeMap(
+                      zoom: 16,
+                      onLocationChanged: (point) {
+                        if (!mounted) return;
+                        setState(() => _livePoint = point);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                Text(
+                  _livePoint == null
+                      ? 'Waiting for live location...'
+                      : 'Live location is updating',
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
                 _detail('Package', _text('package_name', fallback: 'Package')),
                 _detail('Event', _text('event_name', fallback: 'Event')),
                 _detail('Type', _text('event_type', fallback: 'Event')),
-                _detail('Date & Time', BookingCard._formatDate(data)),
+                _detail('Date & Time', BookingCard._formatDate(widget.data)),
                 _detail('Venue', _text('venue', fallback: 'No venue')),
                 _detail('Location', _text('location', fallback: 'No location')),
-                _detail('Guests', '${data['guests'] ?? 0} guests'),
+                _detail('Guests', '${widget.data['guests'] ?? 0} guests'),
                 _detail(
                   'Contact',
                   _text('contact_number', fallback: 'No contact number'),
@@ -945,7 +987,8 @@ class BookingDetailsPage extends StatelessWidget {
   }
 
   String _text(String key, {required String fallback}) {
-    return (data[key] ?? data[_camelCase(key)] ?? fallback).toString();
+    return (widget.data[key] ?? widget.data[_camelCase(key)] ?? fallback)
+        .toString();
   }
 
   String _camelCase(String key) {
